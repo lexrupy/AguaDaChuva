@@ -1,62 +1,232 @@
+/* 
+ *  CONTROLADORA DE SISTERNA E RESERVATÓRIO (CAIXA DÁGUA)
+ *  
+ *  A SISTERNA POSSUI 2 OU 3 SENSORES DE NÍVEL SENDO
+ *  CISTER_UPPER_FLOAT
+ *  CISTER_MIDDLE_FLOAT
+ *  CISTER_LOWER_FLOAT
+ *  
+ *  QUANDO A AGUA ALCANCA ALGUM SENSOR, ELE FICA NA POSICAO LIGADO
+ *  
+ *  A CISTERNA ESTÁ VAZIA QUANDO O SENSOR CISTER_LOWER_FLOAT ESTIVER DESLIGADO
+ *  A CISTERNA ESTÁ CHEIA QUANDO O SENSOR CISTER_UPPER_FLOAT ESTIVER LIGADO
+ *  
+ *   *  
+ *  O RESERVATORIO POSSUI APENAS 1 BOIA 
+ *  RESERV_FLOAT
+ *  
+ *  QUANDO A BOIA DO RESERVATORIO ESTIVER LIGADA O RESERVATORIO ESTÁ VAZIO, QUANDO ESTIVER DESLIGADO
+ *  EXISTE QUALQUER NÍVEL DIFERENTE DE VAZIO NO RESERVATÓRIO
+ *  
+*/
+
+#define CISTER_FUL_FLOAT 2
+#define CISTER_MID_FLOAT 3
+#define CISTER_LOW_FLOAT 4
+
+#define RESERV_FLOAT 7      /* SE LIGADO, RESERVATORIO VAZIO */
+
+#define CONCES_FLOW_OUT 7   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
+#define CISTER_FLOW_OUT 8   /* FLUXO DE ÁGUA DA CISTERNA */
+
+#define RESERV_STATUS_LED 9
+#define CISTER_STATUS_LED 10
+
+#define HEART_BEAT A5
 
 
-#define CISTER_FLOAT 4
-#define RESERV_FLOAT 5
+/* 
+ *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
+ *  MEDIR TEMPO QUE LEVA PARA ENCHER O RESERVATORIO COM O MOTOR DA CISTERNA, E DEIXAR MARGEM 
+ *  
+ *  MEDIR TEMPO DE LEVA PARA ENCHER O RESERVATORIO COM A AGUA DA CONCESSIONARIA E DEIXAR MARGEM 
+ *  CASO ATINGIR O TEMPO, PISCA O LED CORRESPONDENTE DE FLUXO CONCES_FLOW_LED OU CISTER_FLOW_LED
+ *  1 SEGUNDO = 1000
+ *  1 MINUTO  = 60000 
+ 
+*/
 
-#define CISTER_LOW_LED 12
-#define RESERV_LOW_LED 11
-#define CISTER_FLOW_LED 10
-#define CONCES_FLOW_LED 9
+#define SECOND 1000
+#define MINUTE 60000
 
-int CISTER_STATUS = 1;
-int RESERV_STATUS = 1;
+#define MAX_TIME_CISTER_FLOW 5 // DEFAULT 5 MINUTOS 
+#define MAX_TIME_CONCES_FLOW 5 // DEFAULT 5 MINUTOS
+
+
+unsigned long HEART_BEAT_LAST = 0;
+int HEART_BEAT_STATE = LOW;
+
+
+int CISTER_MID = 0;
+int CISTER_FUL = 0;
+int CISTER_LOW = 0;
+
+
+int CISTER_EMPTY_READ = 0;
+int CISTER_EMPTY = 0;
+unsigned long LAST_CISTER_EMPTY_DEBOUNCING_TIME = 0;
+
+
+int RESERV_EMPTY_READ = 0;
+int RESERV_EMPTY = 0;
+unsigned long LAST_RESERV_EMPTY_DEBOUNCING_TIME = 0;
+
+
 int CISTER_FLOW_STATUS = 0;
+int CISTER_FLOW_ERROR = 0;
+
 int CONCES_FLOW_STATUS = 0;
+int CONCES_FLOW_ERROR = 0;
+
+
+int ERROR_STATUS = 0;
+
+unsigned long TIME_CISTER_FLOW = 0;
+unsigned long TIME_CONCES_FLOW = 0;
+
+unsigned long CURRENT_TIME = 0;
+unsigned long DEBOUNCING_DELAY = 1000;
+
 
 void setup() {
-  pinMode(CISTER_FLOAT, INPUT);
+  pinMode(CISTER_FUL_FLOAT, INPUT);
+  pinMode(CISTER_MID_FLOAT, INPUT);
+  pinMode(CISTER_LOW_FLOAT, INPUT);
   pinMode(RESERV_FLOAT, INPUT);
-  pinMode(CISTER_LOW_LED, OUTPUT);
-  pinMode(RESERV_LOW_LED, OUTPUT);
-  pinMode(CISTER_FLOW_LED, OUTPUT);
-  pinMode(CONCES_FLOW_LED, OUTPUT);
+
+  digitalWrite(CISTER_FUL_FLOAT, LOW);
+  digitalWrite(CISTER_MID_FLOAT, LOW);
+  digitalWrite(CISTER_LOW_FLOAT, LOW);
+  digitalWrite(RESERV_FLOAT, LOW);
+  
+  pinMode(RESERV_STATUS_LED, OUTPUT);
+  pinMode(CISTER_STATUS_LED, OUTPUT);
+    
+  pinMode(CISTER_FLOW_OUT, OUTPUT);
+  pinMode(CONCES_FLOW_OUT, OUTPUT);
+
+  pinMode(A5, OUTPUT);
+
+  digitalWrite(A5, LOW);
+  
   Serial.begin(9600);
 }
 
 void loop() {
-  CISTER_STATUS = digitalRead(CISTER_FLOAT);
-  RESERV_STATUS = digitalRead(RESERV_FLOAT);
+  CURRENT_TIME = millis();
 
-//  digitalWrite(CISTER_LOW_LED, !CISTER_STATUS);
-//  digitalWrite(RESERV_LOW_LED, !RESERV_STATUS);
+  readCisternStatus();
+  readReservatoryStatus();
+   
 
-  if (RESERV_STATUS == LOW) {
-    if (CISTER_STATUS == HIGH) {
-      CONCES_FLOW_STATUS = 0;
-      CISTER_FLOW_STATUS = 1;
-    } else {
-      CISTER_FLOW_STATUS = 0;
-      CONCES_FLOW_STATUS = 1;
+
+  if (RESERV_EMPTY == 1) { /* CASO O RESERVATORIO ACUSE VAZIO */
+    if (CISTER_EMPTY == 0) { /* SE HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
+      if (CISTER_FLOW_STATUS == 0 & CISTER_FLOW_ERROR == 0) {
+        /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
+        TIME_CISTER_FLOW = current_time;
+        CONCES_FLOW_STATUS = 0;
+        CISTER_FLOW_STATUS = 1;
+        digitalWrite(CISTER_FLOW_OUT, HIGH);
+        digitalWrite(CONCES_FLOW_OUT, LOW);
+        Serial.println("LIGA MOTOR SISTERNA");
+      }
+    } else {                      /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
+      if (CONCES_FLOW_STATUS == 0 & CONCES_FLOW_ERROR == 0) {
+        TIME_CONCES_FLOW = current_time;
+        CISTER_FLOW_STATUS = 0;
+        CONCES_FLOW_STATUS = 1;
+        digitalWrite(CISTER_FLOW_OUT, LOW);
+        digitalWrite(CONCES_FLOW_OUT, HIGH);
+        Serial.println("ABRE SOLENOIDE CASAN");
+      }
+      
     }
   } else {
     CISTER_FLOW_STATUS = 0;
     CONCES_FLOW_STATUS = 0;
   }
 
-  
-  digitalWrite(CISTER_LOW_LED, !CISTER_STATUS);
-  digitalWrite(RESERV_LOW_LED, !RESERV_STATUS);
+  heartBeat();
+}
 
-  digitalWrite(CISTER_FLOW_LED, CISTER_FLOW_STATUS);
-  digitalWrite(CONCES_FLOW_LED, CONCES_FLOW_STATUS);
+void printSerialLog() {
+    String ctrn = "NAO";
+  if (CISTER_EMPTY) {
+    ctrn = "SIM";
+  }
 
+  String rsrv = "NAO";
+  if (RESERV_EMPTY) {
+    rsrv = "SIM";
+  }
+
+  Serial.print("CISTERNA VAZIA: "+ ctrn+ " RESERVATORIO VAZIO: "+rsrv);
+  if (CONCES_FLOW_STATUS == 1) {
+    Serial.print(" CASAN ABERTO");    
+  }
+  if (CISTER_FLOW_STATUS == 1) {
+    Serial.print(" MOTOR LIGADO");    
+  }
   
-  Serial.print("CISTERNA:");
-  Serial.print(CISTER_STATUS);
-  Serial.print(" CAIXA:");
-  Serial.print(RESERV_STATUS);
-  Serial.print(" BOMBA:");
-  Serial.print(CISTER_FLOW_STATUS);
-  Serial.print(" CASAN:");
-  Serial.println(CONCES_FLOW_STATUS);
+  Serial.println("");
+
+}
+
+
+void readCisternStatus() {
+  unsigned long current_millis = millis();
+  // CISTER_FULL E CISTER_MIDL SAO APENAS INFORMATIVOS, PORTANTO NAO NECESSITAM DEBOUNCING
+  CISTER_FUL  = digitalRead(CISTER_FUL_FLOAT);
+  CISTER_MID  = digitalRead(CISTER_MID_FLOAT);
+  CISTER_LOW  = digitalRead(CISTER_LOW_FLOAT);
+  
+  // UTILIZA O NOT PORQUE ESTARA VAZIO DEPOIS QUE O LOW (NIVEL BAIXO) ESTIVER DESLIGADO
+  int EMPTY_READ = !CISTER_LOW;
+
+  // QUANDO O ESTADO DE LEITURA MUDAR, REGISTRA O TEMPO
+  if (EMPTY_READ != CISTER_EMPTY_READ) {
+    LAST_CISTER_EMPTY_DEBOUNCING_TIME = current_millis;
+  }
+
+  if ((current_millis - LAST_CISTER_EMPTY_DEBOUNCING_TIME) >= DEBOUNCING_DELAY) {
+    if (EMPTY_READ != CISTER_EMPTY) {
+      CISTER_EMPTY = EMPTY_READ;
+    }
+  }
+  // GUARDA A LEITURA PARA O PROXIMO CICLO
+  CISTER_EMPTY_READ = EMPTY_READ;
+}
+
+void readReservatoryStatus() {
+  unsigned long current_millis = millis();
+
+  int EMPTY_READ = digitalRead(RESERV_FLOAT);
+
+
+  if (EMPTY_READ != RESERV_EMPTY_READ) {
+    LAST_RESERV_EMPTY_DEBOUNCING_TIME = current_millis;
+  }
+
+  if ((current_millis - LAST_RESERV_EMPTY_DEBOUNCING_TIME) >= DEBOUNCING_DELAY) {
+    if (EMPTY_READ != RESERV_EMPTY) {
+      RESERV_EMPTY = EMPTY_READ;
+    }
+  }
+  // GUARDA A LEITURA PARA O PROXIMO CICLO
+  RESERV_EMPTY_READ = EMPTY_READ;
+}
+
+void heartBeat() {
+  unsigned long current_millis = millis();
+  
+  if (current_millis - HEART_BEAT_LAST >= 1) {
+    digitalWrite(HEART_BEAT, LOW);
+  }
+
+  if (current_millis - HEART_BEAT_LAST >= 2000) {
+      digitalWrite(HEART_BEAT, HIGH);
+      HEART_BEAT_LAST = current_millis;
+      printSerialLog();
+  }
 }
