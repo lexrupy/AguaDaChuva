@@ -20,6 +20,7 @@
  *  
 */
 
+#include <EEPROM.h>
 #define CISTER_FUL_FLOAT 3
 #define CISTER_MID_FLOAT 4
 #define CISTER_LOW_FLOAT 5
@@ -31,6 +32,11 @@
 
 #define RESERV_STATUS_LED 9
 #define CISTER_STATUS_LED 10
+
+#define ERROR_RESET_PIN 11
+
+#define CISTER_ERROR_ADDR 0
+#define CONCES_ERROR_ADDR 1
 
 #define HEART_BEAT A5
 
@@ -49,8 +55,8 @@
 #define SECOND 1000
 #define MINUTE 60000
 
-#define MAX_TIME_CISTER_FLOW 20 * SECOND // DEFAULT 5 MINUTOS 
-#define MAX_TIME_CONCES_FLOW 10 * SECOND // DEFAULT 5 MINUTOS
+#define MAX_TIME_CISTER_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS 
+#define MAX_TIME_CONCES_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS
 #define STARTUP_TIME 3 * SECOND
 
 unsigned long HEART_BEAT_LAST = 0;
@@ -82,7 +88,6 @@ unsigned long CONCES_FLOW_STATUS_LED_LAST = 0;
 int CONCES_FLOW_STATUS = 0;
 int CONCES_FLOW_ERROR = 0;
 
-
 int ERROR_STATUS = 0;
 
 unsigned long TIME_CISTER_FLOW = 0;
@@ -90,7 +95,6 @@ unsigned long TIME_CONCES_FLOW = 0;
 
 unsigned long TOTAL_TIME_CISTER_FLOW = 0;
 unsigned long TOTAL_TIME_CONCES_FLOW = 0;
-
 
 unsigned long LOOP_TIME = 0;
 unsigned long DEBOUNCING_DELAY = 1000;
@@ -100,6 +104,7 @@ void setup() {
   pinMode(CISTER_FUL_FLOAT, INPUT);
   pinMode(CISTER_MID_FLOAT, INPUT);
   pinMode(CISTER_LOW_FLOAT, INPUT);
+  pinMode(ERROR_RESET_PIN, INPUT_PULLUP);
   pinMode(RESERV_FLOAT, INPUT);
 
   digitalWrite(CISTER_FUL_FLOAT, LOW);
@@ -120,7 +125,10 @@ void setup() {
   pinMode(A5, OUTPUT);
 
   digitalWrite(A5, LOW);
-  
+
+  CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
+  CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
+
   Serial.begin(9600);
 }
 
@@ -149,8 +157,8 @@ void loop() {
       }
     }
   } else {
-    CISTER_FLOW_STATUS = 0;
-    CONCES_FLOW_STATUS = 0;
+    motorOff();
+    solenoidOff();
   }
   controlCisterLED();
   controlReservLED();
@@ -194,20 +202,30 @@ void doSecurityCheck() {
   if (CISTER_FLOW_STATUS == 1) {
     TOTAL_TIME_CISTER_FLOW = LOOP_TIME - TIME_CISTER_FLOW;
     if (TOTAL_TIME_CISTER_FLOW > MAX_TIME_CISTER_FLOW) {
-      CISTER_FLOW_ERROR = 1;
       motorOff();
       solenoidOff();
+      CISTER_FLOW_ERROR = 1;
+      EEPROM.update(CISTER_ERROR_ADDR, 1);
     }
   }
 
   if (CONCES_FLOW_STATUS == 1) {
     TOTAL_TIME_CONCES_FLOW = LOOP_TIME - TIME_CONCES_FLOW;
     if (TOTAL_TIME_CONCES_FLOW > MAX_TIME_CONCES_FLOW) {
-      CONCES_FLOW_ERROR = 1;
       motorOff();
       solenoidOff();
+      CONCES_FLOW_ERROR = 1;
+      EEPROM.update(CONCES_ERROR_ADDR, 1);
     }
   }  
+
+
+  if (digitalRead(ERROR_RESET_PIN) == LOW) {
+    EEPROM.update(CONCES_ERROR_ADDR, 0);
+    EEPROM.update(CISTER_ERROR_ADDR, 0);
+    CONCES_FLOW_ERROR = 0;
+    CISTER_FLOW_ERROR = 0;
+  }
 }
 
 void printSerialLog() {
@@ -337,13 +355,15 @@ void controlReservLED() {
       CONCES_FLOW_STATUS_LED_LAST = LOOP_TIME;
     }
   } else {
-    if (CONCES_FLOW_STATUS == 1) {
+    if (CONCES_FLOW_STATUS == 1) { 
       if (RESERV_STATUS_LED_STATE == 0) {
         digitalWrite(RESERV_STATUS_LED, HIGH);
+        RESERV_STATUS_LED_STATE = 1;
       }
     } else {
       if (RESERV_STATUS_LED_STATE == 1) {
         digitalWrite(RESERV_STATUS_LED, LOW);
+        RESERV_STATUS_LED_STATE = 0;
       }
     }
   }
