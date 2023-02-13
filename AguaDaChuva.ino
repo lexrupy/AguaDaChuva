@@ -19,6 +19,7 @@
  *  EXISTE QUALQUER NÍVEL DIFERENTE DE VAZIO NO RESERVATÓRIO
  *  
 */
+#define SERIAL_DEBUG true
 
 #include <EEPROM.h>
 #define CISTER_FUL_FLOAT 3
@@ -129,7 +130,9 @@ void setup() {
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
 
+  #ifdef SERIAL_DEBUG  
   Serial.begin(9600);
+  #endif
 }
 
 void loop() {
@@ -169,7 +172,9 @@ void motorOn() {
   if (CISTER_FLOW_STATUS == 0) {
     digitalWrite(CISTER_FLOW_OUT, LOW);
     CISTER_FLOW_STATUS = 1;
+    #ifdef SERIAL_DEBUG
     Serial.println("LIGA MOTOR CISTERNA");
+    #endif
   }
 }
 
@@ -177,7 +182,9 @@ void solenoidOff() {
   if (CONCES_FLOW_STATUS == 1) {
     digitalWrite(CONCES_FLOW_OUT, HIGH);
     CONCES_FLOW_STATUS = 0;
+    #ifdef SERIAL_DEBUG
     Serial.println("DESLIGA SOLENOIDE CASAN");
+    #endif
   }
 }
 
@@ -185,7 +192,9 @@ void motorOff() {
   if (CISTER_FLOW_STATUS == 1) {
     digitalWrite(CISTER_FLOW_OUT, HIGH);
     CISTER_FLOW_STATUS = 0;
+    #ifdef SERIAL_DEBUG
     Serial.println("DESLIGA MOTOR CISTERNA");
+    #endif
   }
 }
 
@@ -193,7 +202,9 @@ void solenoidOn() {
   if (CONCES_FLOW_STATUS == 0) {
     digitalWrite(CONCES_FLOW_OUT, LOW);
     CONCES_FLOW_STATUS = 1;
+    #ifdef SERIAL_DEBUG
     Serial.println("LIGA SOLENOIDE CASAN");
+    #endif
   }
 }
 
@@ -228,6 +239,7 @@ void doSecurityCheck() {
   }
 }
 
+#ifdef SERIAL_DEBUG
 void printSerialLog() {
   String ctrn = "NAO";
   
@@ -256,7 +268,7 @@ void printSerialLog() {
   Serial.println("");
 
 }
-
+#endif
 
 void readCisternStatus() {
   // CISTER_FULL E CISTER_MIDL SAO APENAS INFORMATIVOS, PORTANTO NAO NECESSITAM DEBOUNCING
@@ -308,7 +320,9 @@ void heartBeat() {
   if (LOOP_TIME - HEART_BEAT_LAST >= 2000) {
       digitalWrite(HEART_BEAT, HIGH);
       HEART_BEAT_LAST = LOOP_TIME;
+      #ifdef SERIAL_DEBUG
       printSerialLog();
+      #endif
   }
 }
 
