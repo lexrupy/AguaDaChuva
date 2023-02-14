@@ -19,9 +19,11 @@
  *  EXISTE QUALQUER NÍVEL DIFERENTE DE VAZIO NO RESERVATÓRIO
  *  
 */
-#define SERIAL_DEBUG true
+
+//#define SERIAL_DEBUG true
 
 #include <EEPROM.h>
+#include <LiquidCrystal.h>
 #define CISTER_FUL_FLOAT 3
 #define CISTER_MID_FLOAT 4
 #define CISTER_LOW_FLOAT 5
@@ -59,6 +61,64 @@
 #define MAX_TIME_CISTER_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS 
 #define MAX_TIME_CONCES_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS
 #define STARTUP_TIME 3 * SECOND
+
+const int rs = 13, en = 12, d4 = A3, d5 = A2, d6 = A1, d7 = A0;
+
+#define LCD_RS 13
+#define LCD_EN 12
+
+#define LCD_DT1 A3
+#define LCD_DT2 A2
+#define LCD_DT3 A1
+#define LCD_DT4 A0
+
+
+LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT1, LCD_DT2, LCD_DT3, LCD_DT4);
+
+byte lvlEmpty[8] = {
+	0b01110,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b11111
+};
+
+byte lvlLow[8] = {
+	0b01110,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b11111,
+	0b11111
+};
+
+byte lvlMid[8] = {
+	0b01110,
+	0b10001,
+	0b10001,
+	0b10001,
+	0b11111,
+	0b11111,
+	0b11111,
+	0b11111
+};
+
+
+byte lvlFull[8] = {
+	0b01110,
+	0b11111,
+	0b11111,
+	0b11111,
+	0b11111,
+	0b11111,
+	0b11111,
+	0b11111
+};
 
 unsigned long HEART_BEAT_LAST = 0;
 int HEART_BEAT_STATE = LOW;
@@ -130,9 +190,23 @@ void setup() {
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
 
+
+  lcd.begin(16, 2);
+  lcd.clear();
+  lcd.createChar(0, lvlEmpty);
+  lcd.createChar(1, lvlLow);
+  lcd.createChar(2, lvlMid);
+  lcd.createChar(3, lvlFull);
+  lcd.setCursor(0, 0);
+  lcd.print("Cx:    Cist: ");
+  lcd.setCursor(0, 1);
+  lcd.print("Sem Fluxo  --:--");  
+
   #ifdef SERIAL_DEBUG  
   Serial.begin(9600);
   #endif
+
+
 }
 
 void loop() {
@@ -141,6 +215,7 @@ void loop() {
   readCisternStatus();
   readReservatoryStatus();
   doSecurityCheck();
+  updateLCD();
 
   if (RESERV_EMPTY == 1) { /* CASO O RESERVATORIO ACUSE VAZIO */
     if (CISTER_EMPTY == 0) { /* SE HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
@@ -270,6 +345,49 @@ void printSerialLog() {
 }
 #endif
 
+void updateLCD() {
+
+  // Atualizas Nivel Cisterna
+  lcd.setCursor(13, 0);
+  if (CISTER_FUL == HIGH) {
+    lcd.write(byte(3));
+  } else if (CISTER_MID == HIGH) {
+    lcd.write(byte(2));
+  } else if (CISTER_LOW == HIGH) {
+    lcd.write(byte(1));
+  } else {
+    lcd.write(byte(0));
+  }
+
+  // Atualiza Nivel Caixa
+  lcd.setCursor(3, 0);
+  if (RESERV_EMPTY == HIGH) {
+    lcd.write(byte(3));
+  } else {
+    lcd.write(byte(1));
+  }
+
+  float TEMPO_CASAN = TOTAL_TIME_CONCES_FLOW / SECOND;
+  float TEMPO_MOTOR = TOTAL_TIME_CISTER_FLOW / SECOND;
+
+  if (CONCES_FLOW_STATUS == 1) {
+    lcd.setCursor(0, 1);
+    //lcd.print("Sem Fluxo  --:--");  
+    lcd.print("Solenoide  ");    
+    lcd.print(TEMPO_CASAN);
+  }
+  if (CISTER_FLOW_STATUS == 1) {
+    lcd.setCursor(0, 1);
+    //lcd.print("Sem Fluxo  --:--");  
+    lcd.print("Solenoide  ");    
+    lcd.print(TEMPO_MOTOR);
+  }
+  
+
+
+
+}
+
 void readCisternStatus() {
   // CISTER_FULL E CISTER_MIDL SAO APENAS INFORMATIVOS, PORTANTO NAO NECESSITAM DEBOUNCING
   CISTER_FUL  = digitalRead(CISTER_FUL_FLOAT);
@@ -296,7 +414,6 @@ void readCisternStatus() {
 void readReservatoryStatus() {
 
   int EMPTY_READ = digitalRead(RESERV_FLOAT);
-
 
   if (EMPTY_READ != RESERV_EMPTY_READ) {
     LAST_RESERV_EMPTY_DEBOUNCING_TIME = LOOP_TIME;
