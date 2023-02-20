@@ -62,15 +62,13 @@
 #define MAX_TIME_CONCES_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS
 #define STARTUP_TIME 3 * SECOND
 
-const int rs = 13, en = 12, d4 = A3, d5 = A2, d6 = A1, d7 = A0;
-
 #define LCD_RS 13
 #define LCD_EN 12
 
-#define LCD_DT1 A3
-#define LCD_DT2 A2
-#define LCD_DT3 A1
-#define LCD_DT4 A0
+#define LCD_DT1 A0
+#define LCD_DT2 A1
+#define LCD_DT3 A2
+#define LCD_DT4 A3
 
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT1, LCD_DT2, LCD_DT3, LCD_DT4);
@@ -190,9 +188,17 @@ void setup() {
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
 
+  //------------lcd-----------
 
   lcd.begin(16, 2);
   lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("INICIALIZANDO...");
+  delay(2000);
+  lcd.clear();
+
+
+
   lcd.createChar(0, lvlEmpty);
   lcd.createChar(1, lvlLow);
   lcd.createChar(2, lvlMid);
@@ -345,6 +351,7 @@ void printSerialLog() {
 }
 #endif
 
+
 void updateLCD() {
 
   // Atualizas Nivel Cisterna
@@ -362,9 +369,9 @@ void updateLCD() {
   // Atualiza Nivel Caixa
   lcd.setCursor(3, 0);
   if (RESERV_EMPTY == HIGH) {
-    lcd.write(byte(3));
-  } else {
     lcd.write(byte(1));
+  } else {
+    lcd.write(byte(3));
   }
 
   float TEMPO_CASAN = TOTAL_TIME_CONCES_FLOW / SECOND;
