@@ -24,19 +24,21 @@
 
 #include <EEPROM.h>
 #include <LiquidCrystal.h>
-#define CISTER_FUL_FLOAT 3
-#define CISTER_MID_FLOAT 4
-#define CISTER_LOW_FLOAT 5
+#define CISTER_FUL_FLOAT A1
+#define CISTER_MID_FLOAT A2
+#define CISTER_LOW_FLOAT A3
 
-#define RESERV_FLOAT 6      /* SE LIGADO, RESERVATORIO VAZIO */
+#define RESERV_FLOAT A0      /* SE LIGADO, RESERVATORIO VAZIO */
 
-#define CONCES_FLOW_OUT 7   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
-#define CISTER_FLOW_OUT 8   /* FLUXO DE ÁGUA DA CISTERNA */
+#define CONCES_FLOW_OUT 2   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
+#define CISTER_FLOW_OUT 3   /* FLUXO DE ÁGUA DA CISTERNA */
 
-#define RESERV_STATUS_LED 9
-#define CISTER_STATUS_LED 10
+// #define RESERV_STATUS_LED 9
+// #define CISTER_STATUS_LED 10
 
-#define ERROR_RESET_PIN 11
+#define ERROR_RESET_PIN 10
+
+#define LCD_BL 13
 
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
@@ -62,14 +64,13 @@
 #define MAX_TIME_CONCES_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS
 #define STARTUP_TIME 3 * SECOND
 
-#define LCD_RS 13
-#define LCD_EN 12
+#define LCD_DT1 4
+#define LCD_DT2 5
+#define LCD_DT3 6
+#define LCD_DT4 7
 
-#define LCD_DT1 A0
-#define LCD_DT2 A1
-#define LCD_DT3 A2
-#define LCD_DT4 A3
-
+#define LCD_RS 8
+#define LCD_EN 9
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT1, LCD_DT2, LCD_DT3, LCD_DT4);
 
@@ -166,13 +167,16 @@ void setup() {
   pinMode(ERROR_RESET_PIN, INPUT_PULLUP);
   pinMode(RESERV_FLOAT, INPUT);
 
+  pinMode(LCD_BL, OUTPUT);
+  digitalWrite(LCD_BL, HIGH);
+
   digitalWrite(CISTER_FUL_FLOAT, LOW);
   digitalWrite(CISTER_MID_FLOAT, LOW);
   digitalWrite(CISTER_LOW_FLOAT, LOW);
   digitalWrite(RESERV_FLOAT, LOW);
   
-  pinMode(RESERV_STATUS_LED, OUTPUT);
-  pinMode(CISTER_STATUS_LED, OUTPUT);
+  // pinMode(RESERV_STATUS_LED, OUTPUT);
+  // pinMode(CISTER_STATUS_LED, OUTPUT);
   
   pinMode(CISTER_FLOW_OUT, OUTPUT);
   pinMode(CONCES_FLOW_OUT, OUTPUT);
@@ -244,8 +248,8 @@ void loop() {
     motorOff();
     solenoidOff();
   }
-  controlCisterLED();
-  controlReservLED();
+  //controlCisterLED();
+  //controlReservLED();
   heartBeat();
 }
 
@@ -380,19 +384,17 @@ void updateLCD() {
   if (CONCES_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
     //lcd.print("Sem Fluxo  --:--");  
-    lcd.print("Solenoide  ");    
-    lcd.print(TEMPO_CASAN);
+    lcd.print("Solenoide  ");
+    //lcd.print(TEMPO_CASAN);
+    printTime(TOTAL_TIME_CONCES_FLOW);
   }
   if (CISTER_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
     //lcd.print("Sem Fluxo  --:--");  
-    lcd.print("Solenoide  ");    
-    lcd.print(TEMPO_MOTOR);
+    lcd.print("Motor      ");    
+    //lcd.print(TEMPO_MOTOR);
+    printTime(TOTAL_TIME_CISTER_FLOW);
   }
-  
-
-
-
 }
 
 void readCisternStatus() {
@@ -451,59 +453,95 @@ void heartBeat() {
 }
 
 
-void controlCisterLED() {
-  if (CISTER_FLOW_ERROR == 1) {
-    if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 200) & CISTER_STATUS_LED_STATE == 1) {
-      digitalWrite(CISTER_STATUS_LED, LOW);
-      CISTER_STATUS_LED_STATE = 0;
-    }
+// argument is time in milliseconds
+void printTime(unsigned long t_milli)
+{
+    char buffer[20];
+    int days, hours, mins, secs;
+    int fractime;
+    unsigned long inttime;
 
-    if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 400) & CISTER_STATUS_LED_STATE == 0) {
-      digitalWrite(CISTER_STATUS_LED, HIGH);
-      CISTER_STATUS_LED_STATE = 1;
-      CISTER_FLOW_STATUS_LED_LAST = LOOP_TIME;
-    }
+    inttime  = t_milli / 1000;
+    fractime = t_milli % 1000;
+    // inttime is the total number of number of seconds
+    // fractimeis the number of thousandths of a second
 
-  } else {
-    if (CISTER_FLOW_STATUS == 1) {
-      if (CISTER_STATUS_LED_STATE == 0) {
-        digitalWrite(CISTER_STATUS_LED, HIGH);
-        CISTER_STATUS_LED_STATE = 1;
-      }
-    } else {
-      if (CISTER_STATUS_LED_STATE == 1) {
-        digitalWrite(CISTER_STATUS_LED, LOW);
-        CISTER_STATUS_LED_STATE = 0;
-      }
-    }
-  }
+    // number of days is total number of seconds divided by 24 divided by 3600
+    days     = inttime / (24*3600);
+    inttime  = inttime % (24*3600);
+
+    // Now, inttime is the remainder after subtracting the number of seconds
+    // in the number of days
+    hours    = inttime / 3600;
+    inttime  = inttime % 3600;
+
+    // Now, inttime is the remainder after subtracting the number of seconds
+    // in the number of days and hours
+    mins     = inttime / 60;
+    inttime  = inttime % 60;
+
+    // Now inttime is the number of seconds left after subtracting the number
+    // in the number of days, hours and minutes. In other words, it is the
+    // number of seconds.
+    secs = inttime;
+
+    // Don't bother to print days
+    sprintf(buffer, "%02d:%02d", mins, secs);
+    lcd.print(buffer);
 }
+// void controlCisterLED() {
+//   if (CISTER_FLOW_ERROR == 1) {
+//     if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 200) & CISTER_STATUS_LED_STATE == 1) {
+//       digitalWrite(CISTER_STATUS_LED, LOW);
+//       CISTER_STATUS_LED_STATE = 0;
+//     }
+
+//     if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 400) & CISTER_STATUS_LED_STATE == 0) {
+//       digitalWrite(CISTER_STATUS_LED, HIGH);
+//       CISTER_STATUS_LED_STATE = 1;
+//       CISTER_FLOW_STATUS_LED_LAST = LOOP_TIME;
+//     }
+
+//   } else {
+//     if (CISTER_FLOW_STATUS == 1) {
+//       if (CISTER_STATUS_LED_STATE == 0) {
+//         digitalWrite(CISTER_STATUS_LED, HIGH);
+//         CISTER_STATUS_LED_STATE = 1;
+//       }
+//     } else {
+//       if (CISTER_STATUS_LED_STATE == 1) {
+//         digitalWrite(CISTER_STATUS_LED, LOW);
+//         CISTER_STATUS_LED_STATE = 0;
+//       }
+//     }
+//   }
+// }
 
 
-void controlReservLED() {
-  if (CONCES_FLOW_ERROR == 1) {
-    if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 200) & RESERV_STATUS_LED_STATE == 1) {
-      digitalWrite(RESERV_STATUS_LED, LOW);
-      RESERV_STATUS_LED_STATE = 0;
-    }
+// void controlReservLED() {
+//   if (CONCES_FLOW_ERROR == 1) {
+//     if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 200) & RESERV_STATUS_LED_STATE == 1) {
+//       digitalWrite(RESERV_STATUS_LED, LOW);
+//       RESERV_STATUS_LED_STATE = 0;
+//     }
 
-    if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 400) & RESERV_STATUS_LED_STATE == 0) {
-      digitalWrite(RESERV_STATUS_LED, HIGH);
-      RESERV_STATUS_LED_STATE = 1;
-      CONCES_FLOW_STATUS_LED_LAST = LOOP_TIME;
-    }
-  } else {
-    if (CONCES_FLOW_STATUS == 1) { 
-      if (RESERV_STATUS_LED_STATE == 0) {
-        digitalWrite(RESERV_STATUS_LED, HIGH);
-        RESERV_STATUS_LED_STATE = 1;
-      }
-    } else {
-      if (RESERV_STATUS_LED_STATE == 1) {
-        digitalWrite(RESERV_STATUS_LED, LOW);
-        RESERV_STATUS_LED_STATE = 0;
-      }
-    }
-  }
-}
+//     if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 400) & RESERV_STATUS_LED_STATE == 0) {
+//       digitalWrite(RESERV_STATUS_LED, HIGH);
+//       RESERV_STATUS_LED_STATE = 1;
+//       CONCES_FLOW_STATUS_LED_LAST = LOOP_TIME;
+//     }
+//   } else {
+//     if (CONCES_FLOW_STATUS == 1) { 
+//       if (RESERV_STATUS_LED_STATE == 0) {
+//         digitalWrite(RESERV_STATUS_LED, HIGH);
+//         RESERV_STATUS_LED_STATE = 1;
+//       }
+//     } else {
+//       if (RESERV_STATUS_LED_STATE == 1) {
+//         digitalWrite(RESERV_STATUS_LED, LOW);
+//         RESERV_STATUS_LED_STATE = 0;
+//       }
+//     }
+//   }
+// }
 
