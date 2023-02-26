@@ -43,7 +43,6 @@
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
 
-#define HEART_BEAT A5
 
 
 /* 
@@ -56,6 +55,9 @@
  *  1 MINUTO  = 60000 
  
 */
+
+#define FLOW_CONCES 0
+#define FLOW_CISTER 1
 
 #define SECOND 1000
 #define MINUTE 60000
@@ -74,50 +76,12 @@
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT1, LCD_DT2, LCD_DT3, LCD_DT4);
 
-byte lvlEmpty[8] = {
-	0b01110,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b11111
-};
-
-byte lvlLow[8] = {
-	0b01110,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b11111,
-	0b11111
-};
-
-byte lvlMid[8] = {
-	0b01110,
-	0b10001,
-	0b10001,
-	0b10001,
-	0b11111,
-	0b11111,
-	0b11111,
-	0b11111
-};
-
-
-byte lvlFull[8] = {
-	0b01110,
-	0b11111,
-	0b11111,
-	0b11111,
-	0b11111,
-	0b11111,
-	0b11111,
-	0b11111
-};
+byte lvlEmpty[8]    = { 0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111};
+byte lvlLow[8]      = {	0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111};
+byte lvlMid[8]      = {	0b01110,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111,	0b11111,	0b11111};
+byte lvlFull[8]     = {	0b01110,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111};
+byte heartOpen[8]   = {	0b00000,	0b01010,	0b10101,	0b10001,	0b01010,	0b00100,	0b00000,	0b00000};
+byte heartClosed[8] = {	0b00000,	0b01010,	0b11111,	0b11111,	0b01110,	0b00100,	0b00000,	0b00000};
 
 unsigned long HEART_BEAT_LAST = 0;
 int HEART_BEAT_STATE = LOW;
@@ -148,6 +112,8 @@ unsigned long CONCES_FLOW_STATUS_LED_LAST = 0;
 int CONCES_FLOW_STATUS = 0;
 int CONCES_FLOW_ERROR = 0;
 
+bool FLOW_STATUS_CHANGED = false;
+
 int ERROR_STATUS = 0;
 
 unsigned long TIME_CISTER_FLOW = 0;
@@ -158,6 +124,8 @@ unsigned long TOTAL_TIME_CONCES_FLOW = 0;
 
 unsigned long LOOP_TIME = 0;
 unsigned long DEBOUNCING_DELAY = 1000;
+
+int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
 
 
 void setup() {
@@ -197,26 +165,18 @@ void setup() {
   lcd.begin(16, 2);
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("INICIALIZANDO...");
-  delay(2000);
+  lcd.print(" AguaDaChuva1.0 ");
+  lcd.setCursor(0, 1);
+  lcd.print("Inicializando...");
+  delay(STARTUP_TIME);
   lcd.clear();
-
-
-
   lcd.createChar(0, lvlEmpty);
   lcd.createChar(1, lvlLow);
   lcd.createChar(2, lvlMid);
   lcd.createChar(3, lvlFull);
-  lcd.setCursor(0, 0);
-  lcd.print("Cx:    Cist: ");
-  lcd.setCursor(0, 1);
-  lcd.print("Sem Fluxo  --:--");  
-
-  #ifdef SERIAL_DEBUG  
-  Serial.begin(9600);
-  #endif
-
-
+  lcd.createChar(4, heartOpen);
+  lcd.createChar(5, heartClosed);
+  printStatusSkel();
 }
 
 void loop() {
@@ -225,7 +185,6 @@ void loop() {
   readCisternStatus();
   readReservatoryStatus();
   doSecurityCheck();
-  updateLCD();
 
   if (RESERV_EMPTY == 1) { /* CASO O RESERVATORIO ACUSE VAZIO */
     if (CISTER_EMPTY == 0) { /* SE HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
@@ -248,8 +207,7 @@ void loop() {
     motorOff();
     solenoidOff();
   }
-  //controlCisterLED();
-  //controlReservLED();
+  updateLCD();
   heartBeat();
 }
 
@@ -257,9 +215,8 @@ void motorOn() {
   if (CISTER_FLOW_STATUS == 0) {
     digitalWrite(CISTER_FLOW_OUT, LOW);
     CISTER_FLOW_STATUS = 1;
-    #ifdef SERIAL_DEBUG
-    Serial.println("LIGA MOTOR CISTERNA");
-    #endif
+    LAST_FLOW_MODE = FLOW_CISTER;
+    FLOW_STATUS_CHANGED = true;
   }
 }
 
@@ -267,9 +224,7 @@ void solenoidOff() {
   if (CONCES_FLOW_STATUS == 1) {
     digitalWrite(CONCES_FLOW_OUT, HIGH);
     CONCES_FLOW_STATUS = 0;
-    #ifdef SERIAL_DEBUG
-    Serial.println("DESLIGA SOLENOIDE CASAN");
-    #endif
+    FLOW_STATUS_CHANGED = true;
   }
 }
 
@@ -277,9 +232,7 @@ void motorOff() {
   if (CISTER_FLOW_STATUS == 1) {
     digitalWrite(CISTER_FLOW_OUT, HIGH);
     CISTER_FLOW_STATUS = 0;
-    #ifdef SERIAL_DEBUG
-    Serial.println("DESLIGA MOTOR CISTERNA");
-    #endif
+    FLOW_STATUS_CHANGED = true;
   }
 }
 
@@ -287,9 +240,8 @@ void solenoidOn() {
   if (CONCES_FLOW_STATUS == 0) {
     digitalWrite(CONCES_FLOW_OUT, LOW);
     CONCES_FLOW_STATUS = 1;
-    #ifdef SERIAL_DEBUG
-    Serial.println("LIGA SOLENOIDE CASAN");
-    #endif
+    FLOW_STATUS_CHANGED = true;
+    LAST_FLOW_MODE = FLOW_CONCES;
   }
 }
 
@@ -324,42 +276,37 @@ void doSecurityCheck() {
   }
 }
 
-#ifdef SERIAL_DEBUG
-void printSerialLog() {
-  String ctrn = "NAO";
-  
-  if (CISTER_EMPTY) {
-    ctrn = "SIM";
-  }
-
-  String rsrv = "NAO";
-  if (RESERV_EMPTY) {
-    rsrv = "SIM";
-  }
-
-  float TEMPO_CASAN = TOTAL_TIME_CONCES_FLOW / SECOND;
-  float TEMPO_MOTOR = TOTAL_TIME_CISTER_FLOW / SECOND;
-
-  Serial.print("CISTERNA VAZIA: "+ ctrn+ " RESERVATORIO VAZIO: "+rsrv);
-  if (CONCES_FLOW_STATUS == 1) {
-    Serial.print(" CASAN ABERTO TS: ");    
-    Serial.print(TEMPO_CASAN);
-  }
-  if (CISTER_FLOW_STATUS == 1) {
-    Serial.print(" MOTOR LIGADO TM: ");  
-    Serial.print(TEMPO_MOTOR) ; 
-  }
-  
-  Serial.println("");
-
+void printStatusSkel() {
+  lcd.setCursor(0, 0);
+  lcd.print("Cx:  Ct:  AUTO ");
+  lcd.write(byte(4));
+  lcd.setCursor(0, 1);
+  lcd.print("Leitura    --:--");
 }
-#endif
-
 
 void updateLCD() {
 
+  if (FLOW_STATUS_CHANGED) {
+    printStatusSkel();
+    if (LAST_FLOW_MODE == FLOW_CISTER) {
+      lcd.setCursor(9,1);
+      lcd.print("M ");
+      printTime(TOTAL_TIME_CISTER_FLOW);
+
+    } else if (LAST_FLOW_MODE == FLOW_CONCES) {
+      lcd.setCursor(9,1);
+      lcd.print("S ");
+      printTime(TOTAL_TIME_CONCES_FLOW);
+    } else {
+      lcd.setCursor(9,1);
+      lcd.print(" ");
+    }
+
+    FLOW_STATUS_CHANGED = false;
+  }
+
   // Atualizas Nivel Cisterna
-  lcd.setCursor(13, 0);
+  lcd.setCursor(8, 0);
   if (CISTER_FUL == HIGH) {
     lcd.write(byte(3));
   } else if (CISTER_MID == HIGH) {
@@ -378,30 +325,23 @@ void updateLCD() {
     lcd.write(byte(3));
   }
 
-  float TEMPO_CASAN = TOTAL_TIME_CONCES_FLOW / SECOND;
-  float TEMPO_MOTOR = TOTAL_TIME_CISTER_FLOW / SECOND;
-
   if (CONCES_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
-    //lcd.print("Sem Fluxo  --:--");  
     lcd.print("Solenoide  ");
-    //lcd.print(TEMPO_CASAN);
     printTime(TOTAL_TIME_CONCES_FLOW);
   }
   if (CISTER_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
-    //lcd.print("Sem Fluxo  --:--");  
-    lcd.print("Motor      ");    
-    //lcd.print(TEMPO_MOTOR);
+    lcd.print("Motor      ");
     printTime(TOTAL_TIME_CISTER_FLOW);
   }
 }
 
 void readCisternStatus() {
   // CISTER_FULL E CISTER_MIDL SAO APENAS INFORMATIVOS, PORTANTO NAO NECESSITAM DEBOUNCING
-  CISTER_FUL  = digitalRead(CISTER_FUL_FLOAT);
-  CISTER_MID  = digitalRead(CISTER_MID_FLOAT);
-  CISTER_LOW  = digitalRead(CISTER_LOW_FLOAT);
+  CISTER_FUL = digitalRead(CISTER_FUL_FLOAT);
+  CISTER_MID = digitalRead(CISTER_MID_FLOAT);
+  CISTER_LOW = digitalRead(CISTER_LOW_FLOAT);
   
   // UTILIZA O NOT PORQUE ESTARA VAZIO DEPOIS QUE O LOW (NIVEL BAIXO) ESTIVER DESLIGADO
   int EMPTY_READ = !CISTER_LOW;
@@ -439,19 +379,18 @@ void readReservatoryStatus() {
 
 void heartBeat() {
   
-  if (LOOP_TIME - HEART_BEAT_LAST >= 1) {
-    digitalWrite(HEART_BEAT, LOW);
+  if (LOOP_TIME - HEART_BEAT_LAST >= 1000) {
+    lcd.setCursor(15,0);
+    lcd.write(byte(5));
   }
 
-  if (LOOP_TIME - HEART_BEAT_LAST >= 2000) {
-      digitalWrite(HEART_BEAT, HIGH);
-      HEART_BEAT_LAST = LOOP_TIME;
-      #ifdef SERIAL_DEBUG
-      printSerialLog();
-      #endif
+  if (LOOP_TIME - HEART_BEAT_LAST >= 1500) {
+    lcd.setCursor(15,0);
+    //lcd.write(byte(5));
+    lcd.print(" ");
+    HEART_BEAT_LAST = LOOP_TIME;
   }
 }
-
 
 // argument is time in milliseconds
 void printTime(unsigned long t_milli)
@@ -489,59 +428,3 @@ void printTime(unsigned long t_milli)
     sprintf(buffer, "%02d:%02d", mins, secs);
     lcd.print(buffer);
 }
-// void controlCisterLED() {
-//   if (CISTER_FLOW_ERROR == 1) {
-//     if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 200) & CISTER_STATUS_LED_STATE == 1) {
-//       digitalWrite(CISTER_STATUS_LED, LOW);
-//       CISTER_STATUS_LED_STATE = 0;
-//     }
-
-//     if ((LOOP_TIME - CISTER_FLOW_STATUS_LED_LAST >= 400) & CISTER_STATUS_LED_STATE == 0) {
-//       digitalWrite(CISTER_STATUS_LED, HIGH);
-//       CISTER_STATUS_LED_STATE = 1;
-//       CISTER_FLOW_STATUS_LED_LAST = LOOP_TIME;
-//     }
-
-//   } else {
-//     if (CISTER_FLOW_STATUS == 1) {
-//       if (CISTER_STATUS_LED_STATE == 0) {
-//         digitalWrite(CISTER_STATUS_LED, HIGH);
-//         CISTER_STATUS_LED_STATE = 1;
-//       }
-//     } else {
-//       if (CISTER_STATUS_LED_STATE == 1) {
-//         digitalWrite(CISTER_STATUS_LED, LOW);
-//         CISTER_STATUS_LED_STATE = 0;
-//       }
-//     }
-//   }
-// }
-
-
-// void controlReservLED() {
-//   if (CONCES_FLOW_ERROR == 1) {
-//     if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 200) & RESERV_STATUS_LED_STATE == 1) {
-//       digitalWrite(RESERV_STATUS_LED, LOW);
-//       RESERV_STATUS_LED_STATE = 0;
-//     }
-
-//     if ((LOOP_TIME - CONCES_FLOW_STATUS_LED_LAST >= 400) & RESERV_STATUS_LED_STATE == 0) {
-//       digitalWrite(RESERV_STATUS_LED, HIGH);
-//       RESERV_STATUS_LED_STATE = 1;
-//       CONCES_FLOW_STATUS_LED_LAST = LOOP_TIME;
-//     }
-//   } else {
-//     if (CONCES_FLOW_STATUS == 1) { 
-//       if (RESERV_STATUS_LED_STATE == 0) {
-//         digitalWrite(RESERV_STATUS_LED, HIGH);
-//         RESERV_STATUS_LED_STATE = 1;
-//       }
-//     } else {
-//       if (RESERV_STATUS_LED_STATE == 1) {
-//         digitalWrite(RESERV_STATUS_LED, LOW);
-//         RESERV_STATUS_LED_STATE = 0;
-//       }
-//     }
-//   }
-// }
-
