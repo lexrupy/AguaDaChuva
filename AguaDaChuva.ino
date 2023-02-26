@@ -93,12 +93,15 @@ int CISTER_MID = 0;
 int CISTER_FUL = 0;
 int CISTER_LOW = 0;
 
+int CISTER_LEVEL = 0;
+
 
 int CISTER_EMPTY_READ = 0;
 int CISTER_EMPTY = 0;
 unsigned long LAST_CISTER_EMPTY_DEBOUNCING_TIME = 0;
 
 
+int RESERV_LEVEL = 0;
 int RESERV_EMPTY_READ = 0;
 int RESERV_EMPTY = 0;
 unsigned long LAST_RESERV_EMPTY_DEBOUNCING_TIME = 0;
@@ -306,23 +309,39 @@ void updateLCD() {
   }
 
   // Atualizas Nivel Cisterna
-  lcd.setCursor(8, 0);
-  if (CISTER_FUL == HIGH) {
-    lcd.write(byte(3));
-  } else if (CISTER_MID == HIGH) {
-    lcd.write(byte(2));
-  } else if (CISTER_LOW == HIGH) {
-    lcd.write(byte(1));
-  } else {
-    lcd.write(byte(0));
-  }
 
+  
+  lcd.setCursor(8, 0);
+  switch (CISTER_LEVEL) {
+    case 0:
+      lcd.write(byte(0));
+      break;
+    case 1:
+      lcd.write(byte(1));
+      break;
+    case 2:
+      lcd.write(byte(2));
+      break;
+    case 3:
+      lcd.write(byte(3));
+      break;
+  }
   // Atualiza Nivel Caixa
+
   lcd.setCursor(3, 0);
-  if (RESERV_EMPTY == HIGH) {
-    lcd.write(byte(1));
-  } else {
-    lcd.write(byte(3));
+  switch (RESERV_LEVEL) {
+    case 0:
+      lcd.write(byte(0));
+      break;
+    case 1:
+      lcd.write(byte(1));
+      break;
+    case 2:
+      lcd.write(byte(2));
+      break;
+    case 3:
+      lcd.write(byte(3));
+      break;
   }
 
   if (CONCES_FLOW_STATUS == 1) {
@@ -358,6 +377,16 @@ void readCisternStatus() {
   }
   // GUARDA A LEITURA PARA O PROXIMO CICLO
   CISTER_EMPTY_READ = EMPTY_READ;
+
+  if (CISTER_LOW == HIGH) {
+    CISTER_LEVEL = 1;
+  } else if (CISTER_MID == HIGH) {
+    CISTER_LEVEL = 2;
+  } else if (CISTER_FUL == HIGH) {
+    CISTER_LEVEL = 3;
+  } else {
+    CISTER_LEVEL = 0;
+  }
 }
 
 void readReservatoryStatus() {
@@ -375,6 +404,12 @@ void readReservatoryStatus() {
   }
   // GUARDA A LEITURA PARA O PROXIMO CICLO
   RESERV_EMPTY_READ = EMPTY_READ;
+
+  if (RESERV_EMPTY == HIGH) {
+    RESERV_LEVEL = 1;
+  } else {
+    RESERV_LEVEL = 3;
+  } 
 }
 
 void heartBeat() {
