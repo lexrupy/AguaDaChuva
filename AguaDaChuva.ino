@@ -78,10 +78,10 @@
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT4, LCD_DT5, LCD_DT6, LCD_DT7);
 
-byte lvlEmpty[8]    = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F }; // { 0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111};
-byte lvlLow[8]      = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F, 0x1F }; // {	0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111};
-byte lvlMid[8]      = { 0x0E, 0x11, 0x11, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F }; // {	0b01110,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111,	0b11111,	0b11111};
-byte lvlFull[8]     = { 0x0E, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F }; // {	0b01110,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111};
+byte lvlEmpty[8]    = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F };
+byte lvlLow[8]      = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x1F, 0x1F, 0x1F };
+byte lvlMid[8]      = { 0x0E, 0x11, 0x11, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F };
+byte lvlFull[8]     = { 0x0E, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F };
 byte heartOpen[8]   = { 0x00, 0x0A, 0x15, 0x11, 0x11, 0x0A, 0x04, 0x00 }; // {	0b00000,	0b01010,	0b10101,	0b10001,	0b01010,	0b00100,	0b00000,	0b00000};
 byte heartClosed[8] = { 0x00, 0x0A, 0x1F, 0x1F, 0x1F, 0x0E, 0x04, 0x00 }; // {	0b00000,	0b01010,	0b11111,	0b11111,	0b01110,	0b00100,	0b00000,	0b00000};
 
@@ -124,6 +124,10 @@ int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
 unsigned long LCD_BL_TIMEOUT = 5 * SECOND;//1 * MINUTE; // Default 1 minuto
 int LCD_BL_INTENSIDADE = 50; // 50%
 unsigned long LAST_ITERATION_TIME = 0;
+
+bool CISTER_STARTUP_DONE = false;
+bool RESERV_STARTUP_DONE = false;
+
 
 
 void setup() {
@@ -173,28 +177,30 @@ void loop() {
   readCisternStatus();
   readReservatoryStatus();
   doSecurityCheck();
-
-  if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
-    if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
-      if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
-        /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
-        TIME_CISTER_FLOW = LOOP_TIME;
-        TOTAL_TIME_CISTER_FLOW = 0;
-        solenoidOff();
-        motorOn();
+  if (CISTER_STARTUP_DONE && RESERV_STARTUP_DONE) {
+    if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
+      if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
+        if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
+          /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
+          TIME_CISTER_FLOW = LOOP_TIME;
+          TOTAL_TIME_CISTER_FLOW = 0;
+          solenoidOff();
+          motorOn();
+        }
+      } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
+        if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
+          TIME_CONCES_FLOW = LOOP_TIME;
+          TOTAL_TIME_CONCES_FLOW = 0;
+          motorOff();
+          solenoidOn();
+        }
       }
-    } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
-      if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
-        TIME_CONCES_FLOW = LOOP_TIME;
-        TOTAL_TIME_CONCES_FLOW = 0;
-        motorOff();
-        solenoidOn();
-      }
+    } else {
+      motorOff();
+      solenoidOff();
     }
-  } else {
-    motorOff();
-    solenoidOff();
   }
+
   updateLCD();
   heartBeat();
   checkBacklight();
@@ -293,7 +299,7 @@ void printStatusSkel() {
   lcd.print("Cx:  Ct:  AUTO ");
   lcd.write(byte(4));
   lcd.setCursor(0, 1);
-  lcd.print("Leitura    --:--");
+  lcd.print("Ocioso     --:--");
   if (CONCES_FLOW_ERROR == 1 | CISTER_FLOW_ERROR == 1) {
     lcd.setCursor(0, 1);
     if (CONCES_FLOW_ERROR == 1) {
@@ -308,16 +314,16 @@ void updateLCD() {
   if (FLOW_STATUS_CHANGED) {
     printStatusSkel();
     if (LAST_FLOW_MODE == FLOW_CISTER) {
-      lcd.setCursor(9,1);
-      lcd.print("M ");
+      lcd.setCursor(7,1);
+      lcd.print("Mot>");
       printTime(TOTAL_TIME_CISTER_FLOW);
     } else if (LAST_FLOW_MODE == FLOW_CONCES) {
-      lcd.setCursor(9,1);
-      lcd.print("S ");
+      lcd.setCursor(7,1);
+      lcd.print("Sol>");
       printTime(TOTAL_TIME_CONCES_FLOW);
     } else {
-      lcd.setCursor(9,1);
-      lcd.print(" ");
+      lcd.setCursor(7,1);
+      lcd.print("   ");
     }
 
     FLOW_STATUS_CHANGED = false;
@@ -325,7 +331,7 @@ void updateLCD() {
 
   // Atualizas Nivel Cisterna
   lcd.setCursor(8, 0);
-  switch (CISTER_LEVEL) {
+  switch (CISTER_LEVEL_READ) {
     case 0:
       lcd.write(byte(0));
       break;
@@ -342,7 +348,7 @@ void updateLCD() {
 
   // Atualiza Nivel Caixa
   lcd.setCursor(3, 0);
-  switch (RESERV_LEVEL) {
+  switch (RESERV_LEVEL_READ) {
     case 0:
       lcd.write(byte(0));
       break;
@@ -359,12 +365,13 @@ void updateLCD() {
 
   if (CONCES_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
-    lcd.print("Solenoide  ");
+               
+    lcd.print("Solen. On  ");
     printTime(TOTAL_TIME_CONCES_FLOW);
   }
   if (CISTER_FLOW_STATUS == 1) {
     lcd.setCursor(0, 1);
-    lcd.print("Motor      ");
+    lcd.print("Motor On   ");
     printTime(TOTAL_TIME_CISTER_FLOW);
   }
 }
@@ -392,6 +399,7 @@ void readCisternStatus() {
   if ((LOOP_TIME - CISTER_LEVEL_READ_TIME) >= SENSOR_DB_TIME) {
     if (LEVEL_READ != CISTER_LEVEL) {
       CISTER_LEVEL = LEVEL_READ;
+      CISTER_STARTUP_DONE = true;
     }
   }
 
@@ -431,6 +439,7 @@ void readReservatoryStatus() {
   if ((LOOP_TIME - RESERV_LEVEL_READ_TIME) >= SENSOR_DB_TIME) {
     if (LEVEL_READ != RESERV_LEVEL) {
       RESERV_LEVEL = LEVEL_READ;
+      RESERV_STARTUP_DONE = true;
     }
   }
 
