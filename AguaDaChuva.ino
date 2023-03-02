@@ -1,49 +1,51 @@
 /* 
  *  CONTROLADORA DE SISTERNA E RESERVATÓRIO (CAIXA DÁGUA)
  *  
- *  A SISTERNA POSSUI 2 OU 3 SENSORES DE NÍVEL SENDO
- *  CISTER_UPPER_FLOAT
- *  CISTER_MIDDLE_FLOAT
- *  CISTER_LOWER_FLOAT
+ *  A SISTERNA POSSUI 3 SENSORES DE NÍVEL SENDO
+ *  CISTER_SENS
  *  
  *  QUANDO A AGUA ALCANCA ALGUM SENSOR, ELE FICA NA POSICAO LIGADO
  *  
- *  A CISTERNA ESTÁ VAZIA QUANDO O SENSOR CISTER_LOWER_FLOAT ESTIVER DESLIGADO
- *  A CISTERNA ESTÁ CHEIA QUANDO O SENSOR CISTER_UPPER_FLOAT ESTIVER LIGADO
+ *  A CISTERNA ESTÁ VAZIA QUANDO O SENSOR APRESENTAR VALOR ~0
+ *  A CISTERNA ESTÁ BAIXA QUANDO O SENSOR APRESENTAR VALOR ~517
+ *  A CISTERNA ESTA MEIA  QUANDO O SENSOR APRESENTAR VALOR ~613
+ *  A CISTERNA ESTA CHEIA QUANDO O SENSOR APRESENTAR VALOR ~1023
  *  
  *   *  
- *  O RESERVATORIO POSSUI APENAS 1 BOIA 
- *  RESERV_FLOAT
+ *  O RESERVATORIO POSSUI 3 SENSORES DE NIVEL
+ *  RESERV_SENS
  *  
- *  QUANDO A BOIA DO RESERVATORIO ESTIVER LIGADA O RESERVATORIO ESTÁ VAZIO, QUANDO ESTIVER DESLIGADO
- *  EXISTE QUALQUER NÍVEL DIFERENTE DE VAZIO NO RESERVATÓRIO
+ *  O RESERVATÓRIO ESTÁ VAZIO QUANDO O SENSOR APRESENTAR VALOR ~0
+ *  O RESERVATÓRIO ESTÁ BAIXO QUANDO O SENSOR APRESENTAR VALOR ~517
+ *  O RESERVATÓRIO ESTA MEIO  QUANDO O SENSOR APRESENTAR VALOR ~613
+ *  O RESERVATÓRIO ESTA CHEIO QUANDO O SENSOR APRESENTAR VALOR ~1023
  *  
 */
 
-//#define SERIAL_DEBUG true
-
 #include <EEPROM.h>
 #include <LiquidCrystal.h>
-#define CISTER_FUL_FLOAT A1
-#define CISTER_MID_FLOAT A2
-#define CISTER_LOW_FLOAT A3
 
-#define RESERV_FLOAT A0      /* SE LIGADO, RESERVATORIO VAZIO */
+
+#define RESERV_SENS A1
+#define CISTER_SENS A2
 
 #define CONCES_FLOW_OUT 2   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
 #define CISTER_FLOW_OUT 3   /* FLUXO DE ÁGUA DA CISTERNA */
 
-// #define RESERV_STATUS_LED 9
-// #define CISTER_STATUS_LED 10
+#define LCD_DT4 4
+#define LCD_DT5 5
+#define LCD_DT6 6
+#define LCD_DT7 7
+#define LCD_RS 8
+#define LCD_EN 9
 
-#define ERROR_RESET_PIN 10
+#define ERROR_RESET_PIN 10 // Reset colocando ERROR_RESET_OUT TO GND
+#define ERROR_RESET_OUT 11
 
-#define LCD_BL 13
+#define LCD_BL 12
 
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
-
-
 
 /* 
  *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
@@ -62,19 +64,19 @@
 #define SECOND 1000
 #define MINUTE 60000
 
-#define MAX_TIME_CISTER_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS 
-#define MAX_TIME_CONCES_FLOW 100 * MINUTE // DEFAULT 5 MINUTOS
+#define MAX_TIME_CISTER_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS 
+#define MAX_TIME_CONCES_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS
 #define STARTUP_TIME 3 * SECOND
 
-#define LCD_DT1 4
-#define LCD_DT2 5
-#define LCD_DT3 6
-#define LCD_DT4 7
+#define SENSOR_DB_TIME 3 * SECOND
 
-#define LCD_RS 8
-#define LCD_EN 9
+// Define o Nivel que a caixa deve estar para acionar motor ou solenoide
+// 0 -> iniciar quando vazio
+// 1 -> iniciar quando nivel baixo 
+// 2 -> iniciar quando nivel medio
+#define START_LEVEL 1
 
-LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT1, LCD_DT2, LCD_DT3, LCD_DT4);
+LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT4, LCD_DT5, LCD_DT6, LCD_DT7);
 
 byte lvlEmpty[8]    = { 0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111};
 byte lvlLow[8]      = {	0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111};
@@ -84,40 +86,26 @@ byte heartOpen[8]   = {	0b00000,	0b01010,	0b10101,	0b10001,	0b01010,	0b00100,	0b
 byte heartClosed[8] = {	0b00000,	0b01010,	0b11111,	0b11111,	0b01110,	0b00100,	0b00000,	0b00000};
 
 unsigned long HEART_BEAT_LAST = 0;
-int HEART_BEAT_STATE = LOW;
-int CISTER_STATUS_LED_STATE = LOW;
-int RESERV_STATUS_LED_STATE = LOW;
-
-
-int CISTER_MID = 0;
-int CISTER_FUL = 0;
-int CISTER_LOW = 0;
 
 int CISTER_LEVEL = 0;
-
-
-int CISTER_EMPTY_READ = 0;
-int CISTER_EMPTY = 0;
-unsigned long LAST_CISTER_EMPTY_DEBOUNCING_TIME = 0;
-
-
 int RESERV_LEVEL = 0;
-int RESERV_EMPTY_READ = 0;
-int RESERV_EMPTY = 0;
-unsigned long LAST_RESERV_EMPTY_DEBOUNCING_TIME = 0;
 
+int RESERV_LEVEL_READ = 0;
+int CISTER_LEVEL_READ = 0;
+unsigned long RESERV_LEVEL_READ_TIME = 0;
+unsigned long CISTER_LEVEL_READ_TIME = 0;
 
-unsigned long CISTER_FLOW_STATUS_LED_LAST = 0;
+bool RESERV_EMPTY_STATE = false;
+bool CISTER_EMPTY_STATE = false;
+
 int CISTER_FLOW_STATUS = 0;
 int CISTER_FLOW_ERROR = 0;
 
-unsigned long CONCES_FLOW_STATUS_LED_LAST = 0;
 int CONCES_FLOW_STATUS = 0;
 int CONCES_FLOW_ERROR = 0;
 
 bool FLOW_STATUS_CHANGED = false;
-
-int ERROR_STATUS = 0;
+bool FLOW_ENABLED = false;
 
 unsigned long TIME_CISTER_FLOW = 0;
 unsigned long TIME_CONCES_FLOW = 0;
@@ -126,39 +114,27 @@ unsigned long TOTAL_TIME_CISTER_FLOW = 0;
 unsigned long TOTAL_TIME_CONCES_FLOW = 0;
 
 unsigned long LOOP_TIME = 0;
-unsigned long DEBOUNCING_DELAY = 1000;
 
 int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
 
 
 void setup() {
-  pinMode(CISTER_FUL_FLOAT, INPUT);
-  pinMode(CISTER_MID_FLOAT, INPUT);
-  pinMode(CISTER_LOW_FLOAT, INPUT);
+  pinMode(CISTER_SENS, INPUT);
+  pinMode(RESERV_SENS, INPUT);
+
+  pinMode(ERROR_RESET_OUT, OUTPUT);
+  digitalWrite(ERROR_RESET_OUT, HIGH);
+
   pinMode(ERROR_RESET_PIN, INPUT_PULLUP);
-  pinMode(RESERV_FLOAT, INPUT);
 
   pinMode(LCD_BL, OUTPUT);
   digitalWrite(LCD_BL, HIGH);
 
-  digitalWrite(CISTER_FUL_FLOAT, LOW);
-  digitalWrite(CISTER_MID_FLOAT, LOW);
-  digitalWrite(CISTER_LOW_FLOAT, LOW);
-  digitalWrite(RESERV_FLOAT, LOW);
-  
-  // pinMode(RESERV_STATUS_LED, OUTPUT);
-  // pinMode(CISTER_STATUS_LED, OUTPUT);
-  
   pinMode(CISTER_FLOW_OUT, OUTPUT);
   pinMode(CONCES_FLOW_OUT, OUTPUT);
 
-  digitalWrite(CISTER_FLOW_OUT, HIGH);
-  digitalWrite(CONCES_FLOW_OUT, HIGH);
-
-
-  pinMode(A5, OUTPUT);
-
-  digitalWrite(A5, LOW);
+  digitalWrite(CISTER_FLOW_OUT, LOW);
+  digitalWrite(CONCES_FLOW_OUT, LOW);
 
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
@@ -180,18 +156,19 @@ void setup() {
   lcd.createChar(4, heartOpen);
   lcd.createChar(5, heartClosed);
   printStatusSkel();
+
+  Serial.begin(9600);
 }
 
 void loop() {
   LOOP_TIME = millis();
-
   readCisternStatus();
   readReservatoryStatus();
   doSecurityCheck();
 
-  if (RESERV_EMPTY == 1) { /* CASO O RESERVATORIO ACUSE VAZIO */
-    if (CISTER_EMPTY == 0) { /* SE HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
-      if (CISTER_FLOW_STATUS == 0 & CISTER_FLOW_ERROR == 0) {
+  if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
+    if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
+      if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
         /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
         TIME_CISTER_FLOW = LOOP_TIME;
         TOTAL_TIME_CISTER_FLOW = 0;
@@ -199,7 +176,7 @@ void loop() {
         motorOn();
       }
     } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
-      if (CONCES_FLOW_STATUS == 0 & CONCES_FLOW_ERROR == 0) {
+      if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
         TIME_CONCES_FLOW = LOOP_TIME;
         TOTAL_TIME_CONCES_FLOW = 0;
         motorOff();
@@ -285,17 +262,23 @@ void printStatusSkel() {
   lcd.write(byte(4));
   lcd.setCursor(0, 1);
   lcd.print("Leitura    --:--");
+  if (CONCES_FLOW_ERROR == 1 | CISTER_FLOW_ERROR == 1) {
+    lcd.setCursor(0, 1);
+    if (CONCES_FLOW_ERROR == 1) {
+      lcd.print("ERRO-SL");
+    } else {
+      lcd.print("ERRO-MT");
+    }
+  }
 }
 
 void updateLCD() {
-
   if (FLOW_STATUS_CHANGED) {
     printStatusSkel();
     if (LAST_FLOW_MODE == FLOW_CISTER) {
       lcd.setCursor(9,1);
       lcd.print("M ");
       printTime(TOTAL_TIME_CISTER_FLOW);
-
     } else if (LAST_FLOW_MODE == FLOW_CONCES) {
       lcd.setCursor(9,1);
       lcd.print("S ");
@@ -309,8 +292,6 @@ void updateLCD() {
   }
 
   // Atualizas Nivel Cisterna
-
-  
   lcd.setCursor(8, 0);
   switch (CISTER_LEVEL) {
     case 0:
@@ -326,8 +307,8 @@ void updateLCD() {
       lcd.write(byte(3));
       break;
   }
+  
   // Atualiza Nivel Caixa
-
   lcd.setCursor(3, 0);
   switch (RESERV_LEVEL) {
     case 0:
@@ -357,63 +338,76 @@ void updateLCD() {
 }
 
 void readCisternStatus() {
-  // CISTER_FULL E CISTER_MIDL SAO APENAS INFORMATIVOS, PORTANTO NAO NECESSITAM DEBOUNCING
-  CISTER_FUL = digitalRead(CISTER_FUL_FLOAT);
-  CISTER_MID = digitalRead(CISTER_MID_FLOAT);
-  CISTER_LOW = digitalRead(CISTER_LOW_FLOAT);
-  
-  // UTILIZA O NOT PORQUE ESTARA VAZIO DEPOIS QUE O LOW (NIVEL BAIXO) ESTIVER DESLIGADO
-  int EMPTY_READ = !CISTER_LOW;
-
-  // QUANDO O ESTADO DE LEITURA MUDAR, REGISTRA O TEMPO
-  if (EMPTY_READ != CISTER_EMPTY_READ) {
-    LAST_CISTER_EMPTY_DEBOUNCING_TIME = LOOP_TIME;
+  int SENSOR_VALUE = analogRead(CISTER_SENS);
+  int LEVEL_READ = 0;
+  // CHEIA ~1023
+  if (SENSOR_VALUE > 800) { 
+    LEVEL_READ = 3; 
+  } else if (SENSOR_VALUE < 800 && SENSOR_VALUE > 565) {
+    // MEIA ~613
+    LEVEL_READ = 2; 
+  } else if (SENSOR_VALUE < 565 && SENSOR_VALUE > 400) {
+    // BAIXA ~517
+    LEVEL_READ = 1; 
+  } else {
+    // VAZIA ~0;
+    LEVEL_READ = 0;  
   }
-
-  if ((LOOP_TIME - LAST_CISTER_EMPTY_DEBOUNCING_TIME) >= DEBOUNCING_DELAY) {
-    if (EMPTY_READ != CISTER_EMPTY) {
-      CISTER_EMPTY = EMPTY_READ;
+  // RESERV_LEVEL = RESERV_LEVEL_READ;
+  if (LEVEL_READ != CISTER_LEVEL_READ) {
+    CISTER_LEVEL_READ_TIME = LOOP_TIME;
+  }
+  if ((LOOP_TIME - CISTER_LEVEL_READ_TIME) >= SENSOR_DB_TIME) {
+    if (LEVEL_READ != CISTER_LEVEL) {
+      CISTER_LEVEL = LEVEL_READ;
     }
   }
-  // GUARDA A LEITURA PARA O PROXIMO CICLO
-  CISTER_EMPTY_READ = EMPTY_READ;
+ 
+  CISTER_LEVEL_READ = LEVEL_READ;
 
-  if (CISTER_LOW == HIGH) {
-    CISTER_LEVEL = 1;
-  } else if (CISTER_MID == HIGH) {
-    CISTER_LEVEL = 2;
-  } else if (CISTER_FUL == HIGH) {
-    CISTER_LEVEL = 3;
-  } else {
-    CISTER_LEVEL = 0;
+  if (CISTER_LEVEL < 1) {
+    CISTER_EMPTY_STATE = true;
+  } else if (RESERV_LEVEL == 3 ) {
+    CISTER_EMPTY_STATE = false;
   }
 }
 
 void readReservatoryStatus() {
-
-  int EMPTY_READ = digitalRead(RESERV_FLOAT);
-
-  if (EMPTY_READ != RESERV_EMPTY_READ) {
-    LAST_RESERV_EMPTY_DEBOUNCING_TIME = LOOP_TIME;
+  int SENSOR_VALUE = analogRead(RESERV_SENS);
+  int LEVEL_READ = 0;
+  // CHEIA ~1023
+  if (SENSOR_VALUE > 800) { 
+    LEVEL_READ = 3; 
+  } else if (SENSOR_VALUE < 800 && SENSOR_VALUE > 565) {
+    // MEIA ~613
+    LEVEL_READ = 2; 
+  } else if (SENSOR_VALUE < 565 && SENSOR_VALUE > 400) {
+    // BAIXA ~517
+    LEVEL_READ = 1; 
+  } else {
+    // VAZIA ~0;
+    LEVEL_READ = 0;  
   }
-
-  if ((LOOP_TIME - LAST_RESERV_EMPTY_DEBOUNCING_TIME) >= DEBOUNCING_DELAY) {
-    if (EMPTY_READ != RESERV_EMPTY) {
-      RESERV_EMPTY = EMPTY_READ;
+  // RESERV_LEVEL = RESERV_LEVEL_READ;
+  if (LEVEL_READ != RESERV_LEVEL_READ) {
+    RESERV_LEVEL_READ_TIME = LOOP_TIME;
+  }
+  if ((LOOP_TIME - RESERV_LEVEL_READ_TIME) >= SENSOR_DB_TIME) {
+    if (LEVEL_READ != RESERV_LEVEL) {
+      RESERV_LEVEL = LEVEL_READ;
     }
   }
-  // GUARDA A LEITURA PARA O PROXIMO CICLO
-  RESERV_EMPTY_READ = EMPTY_READ;
+ 
+  RESERV_LEVEL_READ = LEVEL_READ;
 
-  if (RESERV_EMPTY == HIGH) {
-    RESERV_LEVEL = 1;
-  } else {
-    RESERV_LEVEL = 3;
-  } 
+  if (RESERV_LEVEL <= START_LEVEL) {
+    RESERV_EMPTY_STATE = true;
+  } else if (RESERV_LEVEL == 3 ) {
+    RESERV_EMPTY_STATE = false;
+  }
 }
 
 void heartBeat() {
-  
   if (LOOP_TIME - HEART_BEAT_LAST >= 1000) {
     lcd.setCursor(15,0);
     lcd.write(byte(5));
@@ -421,7 +415,6 @@ void heartBeat() {
 
   if (LOOP_TIME - HEART_BEAT_LAST >= 1500) {
     lcd.setCursor(15,0);
-    //lcd.write(byte(5));
     lcd.print(" ");
     HEART_BEAT_LAST = LOOP_TIME;
   }
