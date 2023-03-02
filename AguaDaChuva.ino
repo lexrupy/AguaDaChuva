@@ -66,8 +66,8 @@
 
 #define MAX_TIME_CISTER_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS
 #define MAX_TIME_CONCES_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS
-#define STARTUP_TIME 3 * SECOND
 
+#define STARTUP_TIME 3 * SECOND
 #define SENSOR_DB_TIME 3 * SECOND
 
 // Define o Nivel que a caixa deve estar para acionar motor ou solenoide
@@ -78,17 +78,19 @@
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT4, LCD_DT5, LCD_DT6, LCD_DT7);
 
-byte lvlEmpty[8]    = { 0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111};
-byte lvlLow[8]      = {	0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111};
-byte lvlMid[8]      = {	0b01110,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111,	0b11111,	0b11111};
-byte lvlFull[8]     = {	0b01110,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111};
-byte heartOpen[8]   = {	0b00000,	0b01010,	0b10101,	0b10001,	0b01010,	0b00100,	0b00000,	0b00000};
-byte heartClosed[8] = {	0b00000,	0b01010,	0b11111,	0b11111,	0b01110,	0b00100,	0b00000,	0b00000};
+byte lvlEmpty[8]    = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F }; // { 0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111};
+byte lvlLow[8]      = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1F, 0x1F }; // {	0b01110,	0b10001,	0b10001,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111};
+byte lvlMid[8]      = { 0x0E, 0x11, 0x11, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F }; // {	0b01110,	0b10001,	0b10001,	0b10001,	0b11111,	0b11111,	0b11111,	0b11111};
+byte lvlFull[8]     = { 0x0E, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F }; // {	0b01110,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111,	0b11111};
+byte heartOpen[8]   = { 0x00, 0x0A, 0x15, 0x11, 0x11, 0x0A, 0x04, 0x00 }; // {	0b00000,	0b01010,	0b10101,	0b10001,	0b01010,	0b00100,	0b00000,	0b00000};
+byte heartClosed[8] = { 0x00, 0x0A, 0x1F, 0x1F, 0x1F, 0x0E, 0x04, 0x00 }; // {	0b00000,	0b01010,	0b11111,	0b11111,	0b01110,	0b00100,	0b00000,	0b00000};
+
 
 unsigned long HEART_BEAT_LAST = 0;
 
 int CISTER_LEVEL = 0;
-int RESERV_LEVEL = 0;
+// Iniciar Nivel do Reservatorio como 3 (Cheio), prevenindo ligar solenoide antes de terminar a leitura
+int RESERV_LEVEL = 3;
 
 int RESERV_LEVEL_READ = 0;
 int CISTER_LEVEL_READ = 0;
@@ -118,6 +120,12 @@ unsigned long LOOP_TIME = 0;
 int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
 
 
+int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
+unsigned long LCD_BL_TIMEOUT = 5 * SECOND;//1 * MINUTE; // Default 1 minuto
+int LCD_BL_INTENSIDADE = 50; // 50%
+unsigned long LAST_ITERATION_TIME = 0;
+
+
 void setup() {
   pinMode(CISTER_SENS, INPUT);
   pinMode(RESERV_SENS, INPUT);
@@ -133,8 +141,8 @@ void setup() {
   pinMode(CISTER_FLOW_OUT, OUTPUT);
   pinMode(CONCES_FLOW_OUT, OUTPUT);
 
-  digitalWrite(CISTER_FLOW_OUT, LOW);
-  digitalWrite(CONCES_FLOW_OUT, LOW);
+  digitalWrite(CISTER_FLOW_OUT, HIGH);
+  digitalWrite(CONCES_FLOW_OUT, HIGH);
 
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
@@ -189,6 +197,30 @@ void loop() {
   }
   updateLCD();
   heartBeat();
+  checkBacklight();
+}
+
+void checkBacklight() {
+  // Backlight
+  if (LOOP_TIME - LAST_ITERATION_TIME > LCD_BL_TIMEOUT) {
+    if (LCD_BL_STATE == 1) {
+      lcdBackLightOff();
+    }
+  } else {
+    if (LCD_BL_STATE == 0) {
+      lcdBackLightOn();
+    }
+  }
+}
+
+void lcdBackLightOff() {
+  digitalWrite(LCD_BL, LOW);
+  LCD_BL_STATE = 0;
+}
+
+void lcdBackLightOn() {
+  digitalWrite(LCD_BL, HIGH);
+  LCD_BL_STATE = 1;
 }
 
 void motorOn() {
@@ -367,8 +399,12 @@ void readCisternStatus() {
 
   if (CISTER_LEVEL < 1) {
     CISTER_EMPTY_STATE = true;
-  } else if (RESERV_LEVEL == 3 ) {
-    CISTER_EMPTY_STATE = false;
+  } else {
+    // Prevenir alternancia, entre motor e solenoide caso a cisterna começe a encher
+    // e alcançe o primeiro nivel do sensor durante o enchimento
+    if (CONCES_FLOW_STATUS == 0) {
+      CISTER_EMPTY_STATE = false;
+    }
   }
 }
 
