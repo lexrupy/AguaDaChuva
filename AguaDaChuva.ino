@@ -26,8 +26,12 @@
 #include <LiquidCrystal.h>
 
 
-#define RESERV_SENS A1
-#define CISTER_SENS A2
+#define RESERV_SENS A0
+#define CISTER_SENS A1
+
+#define ROTARY_ENCODER_DT  A2
+#define ROTARY_ENCODER_CLK A3
+#define ROTARY_ENCODER_SW  A4
 
 #define CONCES_FLOW_OUT 2   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
 #define CISTER_FLOW_OUT 3   /* FLUXO DE ÁGUA DA CISTERNA */
@@ -39,10 +43,11 @@
 #define LCD_RS 8
 #define LCD_EN 9
 
-#define ERROR_RESET_PIN 10 // Reset colocando ERROR_RESET_OUT TO GND
-#define ERROR_RESET_OUT 11
+#define LCD_BL 10
 
-#define LCD_BL 12
+#define ERROR_RESET_PIN 11 // Reset colocando ERROR_RESET_OUT TO GND
+#define ERROR_RESET_OUT 12
+
 
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
@@ -64,8 +69,8 @@
 #define SECOND 1000
 #define MINUTE 60000
 
-#define MAX_TIME_CISTER_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS
-#define MAX_TIME_CONCES_FLOW 3 * MINUTE // DEFAULT 5 MINUTOS
+#define MAX_TIME_CISTER_FLOW 5 * MINUTE // DEFAULT 5 MINUTOS
+#define MAX_TIME_CONCES_FLOW 5 * MINUTE // DEFAULT 5 MINUTOS
 
 #define STARTUP_TIME 3 * SECOND
 #define SENSOR_DB_TIME 3 * SECOND
@@ -139,6 +144,8 @@ void setup() {
 
   pinMode(ERROR_RESET_PIN, INPUT_PULLUP);
 
+  pinMode(ROTARY_ENCODER_SW, INPUT_PULLUP);
+
   pinMode(LCD_BL, OUTPUT);
   digitalWrite(LCD_BL, HIGH);
 
@@ -208,15 +215,15 @@ void loop() {
 
 void checkBacklight() {
   // Backlight
-  if (LOOP_TIME - LAST_ITERATION_TIME > LCD_BL_TIMEOUT) {
-    if (LCD_BL_STATE == 1) {
-      lcdBackLightOff();
-    }
-  } else {
-    if (LCD_BL_STATE == 0) {
-      lcdBackLightOn();
-    }
-  }
+  // if (LOOP_TIME - LAST_ITERATION_TIME > LCD_BL_TIMEOUT) {
+  //   if (LCD_BL_STATE == 1) {
+  //     lcdBackLightOff();
+  //   }
+  // } else {
+  //   if (LCD_BL_STATE == 0) {
+  //     lcdBackLightOn();
+  //   }
+  // }
 }
 
 void lcdBackLightOff() {
@@ -286,7 +293,7 @@ void doSecurityCheck() {
   }
 
 
-  if (digitalRead(ERROR_RESET_PIN) == LOW) {
+  if (digitalRead(ROTARY_ENCODER_SW) == LOW) {
     EEPROM.update(CONCES_ERROR_ADDR, 0);
     EEPROM.update(CISTER_ERROR_ADDR, 0);
     CONCES_FLOW_ERROR = 0;
