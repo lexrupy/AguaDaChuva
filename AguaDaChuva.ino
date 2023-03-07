@@ -196,8 +196,8 @@ void setup() {
   START_LEVEL = EEPROM.read(START_LEVEL_ADDR);
 
   if (START_LEVEL > LEVEL_MID) {
-    EEPROM.update(START_LEVEL_ADDR, LEVEL_MID);
-    START_LEVEL = LEVEL_MID;
+    EEPROM.update(START_LEVEL_ADDR, LEVEL_EMPTY);
+    START_LEVEL = LEVEL_EMPTY;
   }
   
 
@@ -206,10 +206,16 @@ void setup() {
   lcd.begin(16, 2);
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print(" AguaDaChuva1.0 ");
+  lcd.print(" Agua da Chuva  ");
   lcd.setCursor(0, 1);
-  lcd.print("Inicializando...");
-  delay(STARTUP_TIME);
+  lcd.print("Ver. 1.1        ");
+  lcd.setCursor(9, 1);
+  int _delay = STARTUP_TIME/7;
+  for (int i = 0; i<7; i++){
+    lcd.write(0xFF);
+    delay(_delay);
+  }
+  
   lcd.clear();
   lcd.createChar(LEVEL_EMPTY, lvlEmpty);
   lcd.createChar(LEVEL_LOW, lvlLow);
@@ -439,15 +445,18 @@ void processEncoderButtonPress() {
         case 5:
           switch (SUBMENU_ATUAL) {
             case 0:
-              IN_SUBMENU = false;
+              START_LEVEL = 0;
               break;
             case 1:
-              IN_SUBMENU = false;
+              START_LEVEL = 1;
               break;
             case 2:
+              START_LEVEL = 2;
+              break;
+            case 3:
+              EEPROM.update(START_LEVEL_ADDR, START_LEVEL);
               IN_SUBMENU = false;
               break;
-
           }
           break;
       }
@@ -575,19 +584,44 @@ void printMenu5(){
     lcd.setCursor(0,1);
     lcd.print("  ");
     lcd.write(byte(LEVEL_EMPTY));
-    lcd.print("   ");
-    lcd.write(byte(LEVEL_LOW));
-    lcd.print("   ");
-    lcd.write(byte(LEVEL_MID));
     lcd.print("    ");
+    lcd.write(byte(LEVEL_LOW));
+    lcd.print("    ");
+    lcd.write(byte(LEVEL_MID));
+    lcd.print("  ");
     lcd.write(byte(VOLTAR));
+
+    if (START_LEVEL == 0) {
+      lcd.setCursor(1,1);
+      lcd.print("*");
+      lcd.setCursor(6,1);
+      lcd.print(" ");
+      lcd.setCursor(11,1);
+      lcd.print(" ");
+    } else if (START_LEVEL == 1){
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(6,1);
+      lcd.print("*");
+      lcd.setCursor(11,1);
+      lcd.print(" ");
+    } else if (START_LEVEL == 2){
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(6,1);
+      lcd.print(" ");
+      lcd.setCursor(11,1);
+      lcd.print("*");
+    }
+
+
     switch (SUBMENU_ATUAL) {
       case 0:
         lcd.setCursor(0,1);
         lcd.write(126);
-        lcd.setCursor(4,1);
+        lcd.setCursor(5,1);
         lcd.print(" ");
-        lcd.setCursor(8,1);
+        lcd.setCursor(10,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
         lcd.print(" ");
@@ -595,9 +629,9 @@ void printMenu5(){
       case 1:
         lcd.setCursor(0,1);
         lcd.print(" ");
-        lcd.setCursor(4,1);
+        lcd.setCursor(5,1);
         lcd.write(126);
-        lcd.setCursor(8,1);
+        lcd.setCursor(10,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
         lcd.print(" ");
@@ -605,9 +639,9 @@ void printMenu5(){
       case 2:
         lcd.setCursor(0,1);
         lcd.print(" ");
-        lcd.setCursor(4,1);
+        lcd.setCursor(5,1);
         lcd.print(" ");
-        lcd.setCursor(8,1);
+        lcd.setCursor(10,1);
         lcd.write(126);
         lcd.setCursor(14,1);
         lcd.print(" ");
@@ -615,9 +649,9 @@ void printMenu5(){
       case 3:
         lcd.setCursor(0,1);
         lcd.print(" ");
-        lcd.setCursor(4,1);
+        lcd.setCursor(5,1);
         lcd.print(" ");
-        lcd.setCursor(8,1);
+        lcd.setCursor(10,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
         lcd.write(126);
@@ -625,10 +659,21 @@ void printMenu5(){
     }
   } else {
     lcd.setCursor(0,1);
-                                 //         1234567890123456
-    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
-    //         1234567890123456
-    lcd.print("    Desligado   ");
+    if (START_LEVEL == LEVEL_EMPTY) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_EMPTY));
+      lcd.write(" Vazio     ");
+    } else if (START_LEVEL == LEVEL_LOW) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_LOW));
+      lcd.write(" Baixo     ");
+    } else if (START_LEVEL == LEVEL_MID) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_MID));
+      lcd.write(" Medio     ");
+    } else {
+      lcd.print("        -       ");
+    }
   }
 }
 
@@ -937,7 +982,7 @@ void updateLCD() {
           break;
         // Sair
         case 6:
-          printMenu5();
+          printMenu6();
           break;
       }
     }
