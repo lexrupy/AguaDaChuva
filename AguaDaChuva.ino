@@ -90,7 +90,6 @@
 #define HEART       4
 #define VOLTAR      5
 
-
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT4, LCD_DT5, LCD_DT6, LCD_DT7);
 RotaryEncoder encoder(ROTARY_ENCODER_DT, ROTARY_ENCODER_CLK, RotaryEncoder::LatchMode::TWO03);
 
@@ -102,8 +101,6 @@ byte heartChr[8] = { 0x00, 0x0A, 0x1F, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
 byte stateOn[8]  = { 0x00, 0x04, 0x0E, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };//{ 0x0C, 0x12, 0x12, 0x0C, 0x12, 0x1A, 0x16, 0x12 };//{ 0x00, 0x0E, 0x15, 0x1F, 0x1F, 0x15, 0x0E, 0x00 };
 byte stateOff[8] = { 0x00, 0x04, 0x0A, 0x11, 0x11, 0x0A, 0x04, 0x00 };//{ 0x00, 0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00 };
 byte voltarChr[8]= { 0x04, 0x0C, 0x1F, 0x0D, 0x05, 0x01, 0x1F, 0x00 };
-
-
 
 unsigned long HEART_BEAT_LAST = 0;
 
@@ -205,6 +202,15 @@ void setup() {
 
   lcd.begin(16, 2);
   lcd.clear();
+
+  lcd.createChar(LEVEL_EMPTY, lvlEmpty);
+  lcd.createChar(LEVEL_LOW, lvlLow);
+  lcd.createChar(LEVEL_MID, lvlMid);
+  lcd.createChar(LEVEL_FULL, lvlFull);
+  lcd.createChar(HEART, heartChr);
+  lcd.createChar(VOLTAR, voltarChr);
+
+
   lcd.setCursor(0, 0);
   lcd.print(" Agua da Chuva  ");
   lcd.setCursor(0, 1);
@@ -217,12 +223,7 @@ void setup() {
   }
   
   lcd.clear();
-  lcd.createChar(LEVEL_EMPTY, lvlEmpty);
-  lcd.createChar(LEVEL_LOW, lvlLow);
-  lcd.createChar(LEVEL_MID, lvlMid);
-  lcd.createChar(LEVEL_FULL, lvlFull);
-  lcd.createChar(HEART, heartChr);
-  lcd.createChar(VOLTAR, voltarChr);
+
   printStatusSkel();
 
   Serial.begin(9600);
