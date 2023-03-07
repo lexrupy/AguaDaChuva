@@ -70,8 +70,8 @@
 #define SECOND 1000
 #define MINUTE 60000
 
-#define MAX_TIME_CISTER_FLOW 5 * MINUTE // DEFAULT 5 MINUTOS
-#define MAX_TIME_CONCES_FLOW 5 * MINUTE // DEFAULT 5 MINUTOS
+#define MAX_TIME_CISTER_FLOW 10 * MINUTE // DEFAULT 5 MINUTOS
+#define MAX_TIME_CONCES_FLOW 10 * MINUTE // DEFAULT 5 MINUTOS
 
 #define STARTUP_TIME 3 * SECOND
 #define SENSOR_DB_TIME 3 * SECOND
@@ -124,7 +124,6 @@ int CISTER_FLOW_ERROR = 0;
 int CONCES_FLOW_STATUS = 0;
 int CONCES_FLOW_ERROR = 0;
 
-bool FLOW_STATUS_CHANGED = false;
 bool FLOW_ENABLED = false;
 
 unsigned long TIME_CISTER_FLOW = 0;
@@ -137,18 +136,17 @@ unsigned long LOOP_TIME = 0;
 
 int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
 
-
+bool REFRESH_STATUS_SCREEN = false;
 int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
-unsigned long LCD_BL_TIMEOUT = 1 * MINUTE; // Default 1 minuto
-int LCD_BL_INTENSIDADE = 50; // 50%
+unsigned long LCD_BL_TIMEOUT = 3 * MINUTE; // Tempo LCD Ligado
 unsigned long LAST_ITERATION_TIME = 0;
 
 bool CISTER_STARTUP_DONE = false;
 bool RESERV_STARTUP_DONE = false;
 
+int MODO_OPERACAO = 0; // 0 = AUTOMATICO, 1 = MANUAL
+
 // ================================ menu ==================================
-int ULTIMO_MENU = 0;
-int ULTIMO_SUBMENU = 0;
 int MENU_ATUAL = 0;
 int SUBMENU_ATUAL = 0;
 bool IN_MENU = false;
@@ -228,7 +226,7 @@ void loop() {
   // Checagem de segurança para desligar apos certo tempo sem concluir o enchimento da caixa
   doSecurityCheck();
   // Controle do Fluxo de Agua, motor, solenoide ETC
-  controleDeFluxo();
+  if (MODO_OPERACAO == 0) controleDeFluxo();
   updateLCD();
   heartBeat();
   checkBacklight();
@@ -269,6 +267,8 @@ void readMenuSwitch(){
     ENCODER_POS = newPos;
     if (LCD_BL_STATE == 1) {
       if (processEncoderRotation(direction) == 1) DO_MENU_DRAW = true;
+      // processEncoderRotation(direction);
+      // DO_MENU_DRAW = true;
     }
   }
   
@@ -294,31 +294,27 @@ int processEncoderRotation(int direction) {
   if (IN_MENU) {
     // NO SUBMENU
     if (IN_SUBMENU) {
-      ULTIMO_SUBMENU = SUBMENU_ATUAL;
+      result = 1;
       if (direction == 1) {
-        if (SUBMENU_ATUAL < SUBMENU_SIZE) {
-          SUBMENU_ATUAL++;
-          result = 1;
-        }
+        if (SUBMENU_ATUAL == SUBMENU_SIZE) SUBMENU_ATUAL = 0;
+        else if (SUBMENU_ATUAL < SUBMENU_SIZE) SUBMENU_ATUAL++;
       } else {
-        if (SUBMENU_ATUAL > 0) {
-          SUBMENU_ATUAL--;
-          result = 1;
-        }
+        if (SUBMENU_ATUAL > 0) SUBMENU_ATUAL--;
+        else SUBMENU_ATUAL = SUBMENU_SIZE;
       }
+
+      // Se submen de debug, dispara draw
+      if (MENU_ATUAL == 3) DO_MENU_DRAW = true;
+
     // NO MENU PRINCIPAL
     } else {
-      ULTIMO_MENU = MENU_ATUAL;
+      result = 1;
       if (direction == 1) {
-        if (MENU_ATUAL < MENU_SIZE) {
-          MENU_ATUAL++;
-          result = 1;
-        }
+        if (MENU_ATUAL == MENU_SIZE) MENU_ATUAL = 0;
+        else if (MENU_ATUAL < MENU_SIZE) MENU_ATUAL++;
       } else {
-        if (MENU_ATUAL > 0) {
-          MENU_ATUAL--;
-          result = 1;
-        }
+        if (MENU_ATUAL > 0) MENU_ATUAL--;
+        else MENU_ATUAL = MENU_SIZE;
       }
     }
   }
@@ -331,10 +327,105 @@ void processEncoderButtonPress() {
     IN_MENU = true;
   } else {
     if (!IN_SUBMENU) {
-      SUBMENU_ATUAL = 0;
-      IN_SUBMENU = true;
+      if (MENU_ATUAL == 5) {
+        REFRESH_STATUS_SCREEN = true;
+        IN_MENU = false;
+      } else {
+        SUBMENU_ATUAL = 0;
+        IN_SUBMENU = true;
+      }
     } else {
-      DO_SUBMENU_ACTION = true;
+      // Executa a acao de acordo com o menu e submenu selecionado
+      switch (MENU_ATUAL) {
+        // Menu Modo Operacao
+        case 0:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              if (MODO_OPERACAO == 1) {
+                MODO_OPERACAO = 0;
+                DO_MENU_DRAW = true;
+              }
+              break;
+            case 1:
+              if (MODO_OPERACAO == 0) {
+                MODO_OPERACAO = 1;
+                DO_MENU_DRAW = true;
+              }
+              break;
+            // Voltar
+            case 2:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
+        // Menu Estado Motor
+        case 1:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              if (CISTER_FLOW_STATUS == 0) {
+                TIME_CISTER_FLOW = LOOP_TIME;
+                TOTAL_TIME_CISTER_FLOW = 0;
+                motorOn();
+              }
+              DO_MENU_DRAW = true;
+              break;
+            case 1:
+              if (CISTER_FLOW_STATUS == 1) motorOff();
+              DO_MENU_DRAW = true;
+              break;
+            // Voltar
+            case 2:
+              IN_SUBMENU = false;
+              break;
+            
+          }
+          break;
+          // Menu Estado Solenoide
+        case 2:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              if (CONCES_FLOW_STATUS == 0) {
+                TIME_CONCES_FLOW = LOOP_TIME;
+                TOTAL_TIME_CONCES_FLOW = 0;
+                solenoidOn();
+              }
+              DO_MENU_DRAW = true;
+              break;
+            case 1:
+              if (CONCES_FLOW_STATUS == 1) solenoidOff();
+              DO_MENU_DRAW = true;
+              break;
+            // Voltar
+            case 2:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
+        // Menu DEBUG
+        case 3:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
+        // Menu Reset Erro
+        case 4:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              // Retira o Estado de erro
+              EEPROM.update(CONCES_ERROR_ADDR, 0);
+              EEPROM.update(CISTER_ERROR_ADDR, 0);
+              CONCES_FLOW_ERROR = 0;
+              CISTER_FLOW_ERROR = 0;
+              IN_SUBMENU = false;
+              break;
+            case 1:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
+      }
     }
   }
 }
@@ -367,7 +458,7 @@ void motorOn() {
     digitalWrite(CISTER_FLOW_OUT, LOW);
     CISTER_FLOW_STATUS = 1;
     LAST_FLOW_MODE = FLOW_CISTER;
-    FLOW_STATUS_CHANGED = true;
+    REFRESH_STATUS_SCREEN = true;
   }
 }
 
@@ -375,7 +466,7 @@ void solenoidOff() {
   if (CONCES_FLOW_STATUS == 1) {
     digitalWrite(CONCES_FLOW_OUT, HIGH);
     CONCES_FLOW_STATUS = 0;
-    FLOW_STATUS_CHANGED = true;
+    REFRESH_STATUS_SCREEN = true;
   }
 }
 
@@ -383,7 +474,7 @@ void motorOff() {
   if (CISTER_FLOW_STATUS == 1) {
     digitalWrite(CISTER_FLOW_OUT, HIGH);
     CISTER_FLOW_STATUS = 0;
-    FLOW_STATUS_CHANGED = true;
+    REFRESH_STATUS_SCREEN = true;
   }
 }
 
@@ -391,7 +482,7 @@ void solenoidOn() {
   if (CONCES_FLOW_STATUS == 0) {
     digitalWrite(CONCES_FLOW_OUT, LOW);
     CONCES_FLOW_STATUS = 1;
-    FLOW_STATUS_CHANGED = true;
+    REFRESH_STATUS_SCREEN = true;
     LAST_FLOW_MODE = FLOW_CONCES;
   }
 }
@@ -417,19 +508,16 @@ void doSecurityCheck() {
       EEPROM.update(CONCES_ERROR_ADDR, 1);
     }
   }
-
-
-  if (digitalRead(ROTARY_ENCODER_SW) == LOW) {
-    EEPROM.update(CONCES_ERROR_ADDR, 0);
-    EEPROM.update(CISTER_ERROR_ADDR, 0);
-    CONCES_FLOW_ERROR = 0;
-    CISTER_FLOW_ERROR = 0;
-  }
 }
 
 void printStatusSkel() {
   lcd.setCursor(0, 0);
-  lcd.print("Cx:  Ct:  AUTO ");
+  lcd.print("Cx:  Ct:  ");
+  if (MODO_OPERACAO == 0) {
+    lcd.print("AUTO ");
+  } else {
+    lcd.print("MANU ");
+  }
   lcd.write(byte(HEART));
   lcd.setCursor(0, 1);
   lcd.print("Ocioso     --:--");
@@ -443,17 +531,179 @@ void printStatusSkel() {
   }
 }
 
-void printMenu5(){}
-void printMenu4(){}
-void printMenu3(){}
-void printMenu2(){}
-
-void printMenu1() {
+void printMenu5(){
+  SUBMENU_SIZE = 0;
   lcd.setCursor(0,0);
   //         1234567890123456
-  lcd.print("< Estado Motor >");
-
+  lcd.print("<     Sair     >");
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+}
+void printMenu4(){
+  SUBMENU_SIZE = 1;
+  lcd.setCursor(0,0);
+  lcd.print("<  Erro Oper.  >");
   if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("#  Erro Oper.  #");
+    lcd.setCursor(0,1);
+    lcd.print("Reset  SIM  NAO");
+    switch (SUBMENU_ATUAL) {
+      case 0:
+        lcd.setCursor(6,1);
+        lcd.write(126);
+        lcd.setCursor(11,1);
+        lcd.print(" ");
+        break;
+      case 1:
+        lcd.setCursor(6,1);
+        lcd.print(" ");
+        lcd.setCursor(11,1);
+        lcd.write(126);
+        break;
+    }
+  } else {
+    lcd.setCursor(0,1);
+    if (CISTER_FLOW_ERROR == 0 && CONCES_FLOW_ERROR == 0) {
+      lcd.print("    SEM ERRO    ");
+    }
+
+    if (CISTER_FLOW_ERROR == 1) {
+      lcd.print("SIM: Tempo Motor");
+    } else if (CONCES_FLOW_ERROR == 1) {
+      lcd.print("SIM: Tempo Solen");
+    }
+    if (CISTER_FLOW_ERROR == 1 && CONCES_FLOW_ERROR == 1) {
+      lcd.print("SIM: Motor&Solen");
+    }
+  }
+}
+void printMenu3(){
+  SUBMENU_SIZE = 0;
+  lcd.setCursor(0,0);
+  //         1234567890123456
+  lcd.print("<     DEBUG    >");
+  if (IN_SUBMENU) {
+    lcd.setCursor(0,1);
+    lcd.print("                ");
+    lcd.setCursor(0,0);
+    lcd.print("CX:   CT:  DEBUG");
+  // Atualizas Nivel Cisterna
+    lcd.setCursor(9, 0);
+    switch (CISTER_LEVEL_READ) {
+      case 0:
+        lcd.write(byte(LEVEL_EMPTY));
+        break;
+      case 1:
+        lcd.write(byte(LEVEL_LOW));
+        break;
+      case 2:
+        lcd.write(byte(LEVEL_MID));
+        break;
+      case 3:
+        lcd.write(byte(LEVEL_FULL));
+        break;
+    }
+
+    // Atualiza Nivel Caixa
+    lcd.setCursor(3, 0);
+    switch (RESERV_LEVEL_READ) {
+      case 0:
+        lcd.write(byte(LEVEL_EMPTY));
+        break;
+      case 1:
+        lcd.write(byte(LEVEL_LOW));
+        break;
+      case 2:
+        lcd.write(byte(LEVEL_MID));
+        break;
+      case 3:
+        lcd.write(byte(LEVEL_FULL));
+        break;
+    }
+    lcd.setCursor(0,1);
+    //         1234567890123456
+    lcd.setCursor(0,1);
+    lcd.print(analogRead(RESERV_SENS));
+    lcd.setCursor(6,1);
+    lcd.print(analogRead(CISTER_SENS));
+    lcd.setCursor(14,1);
+    lcd.write(126);
+    lcd.write(byte(VOLTAR));
+  } else {
+    lcd.setCursor(0,1);
+    //         1234567890123456
+    lcd.print("CX:      CT:    ");
+    lcd.setCursor(3,1);
+    lcd.print(analogRead(RESERV_SENS));
+    lcd.setCursor(12,1);
+    lcd.print(analogRead(CISTER_SENS));
+  }
+}
+void printMenu2(){
+  SUBMENU_SIZE = 2;
+  lcd.setCursor(0,0);
+  lcd.print("<   Solenoide  >");
+  if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("#   Solenoide  #");
+    lcd.setCursor(0,1);
+    lcd.print("  ON     OFF   ");
+    lcd.write(byte(VOLTAR));
+    if (CONCES_FLOW_STATUS == 1) {
+      lcd.setCursor(1,1);
+      lcd.print("*");
+      lcd.setCursor(8,1);
+      lcd.print(" ");
+    } else {
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(8,1);
+      lcd.print("*");
+    }
+    switch (SUBMENU_ATUAL) {
+      case 0:
+        lcd.setCursor(0,1);
+        //lcd.print(">");
+        lcd.write(126);
+        lcd.setCursor(7,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 1:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(7,1);
+        lcd.write(126);
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 2:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(6,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.write(126);
+        break;
+    }
+  } else {
+    lcd.setCursor(0,1);
+                                 //         1234567890123456
+    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    //         1234567890123456
+    lcd.print("    Desligado   ");
+  }
+}
+void printMenu1() {
+  SUBMENU_SIZE = 2;
+  lcd.setCursor(0,0);
+  lcd.print("<     Motor    >");
+  if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("#     Motor    #");
+
     lcd.setCursor(0,1);
     //         1234567890123456
     lcd.print("  ON     OFF   ");
@@ -472,7 +722,8 @@ void printMenu1() {
     switch (SUBMENU_ATUAL) {
       case 0:
         lcd.setCursor(0,1);
-        lcd.print(">");
+        //lcd.print(">");
+        lcd.write(126);
         lcd.setCursor(7,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
@@ -482,7 +733,7 @@ void printMenu1() {
         lcd.setCursor(0,1);
         lcd.print(" ");
         lcd.setCursor(7,1);
-        lcd.print(">");
+        lcd.write(126);
         lcd.setCursor(14,1);
         lcd.print(" ");
         break;
@@ -492,49 +743,102 @@ void printMenu1() {
         lcd.setCursor(6,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
-        lcd.print(">");
+        lcd.write(126);
         break;
     }
   } else {
     lcd.setCursor(0,1);
-    lcd.print("                ");
+                                 //         1234567890123456
+    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    //         1234567890123456
+    lcd.print("    Desligado   ");
   }
 }
 
 void printMenu0() {
+  SUBMENU_SIZE = 2;
   lcd.setCursor(0,0);
   //         1234567890123456
-  lcd.print("   Modo Oper.  >");
+  lcd.print("<  Modo Oper.  >");
   if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("#  Modo Oper.  #");
     lcd.setCursor(0,1);
-    lcd.print(" * Automatico  >");
+    //         1234567890123456
+    lcd.print("  AUTO   MANU  ");
+    lcd.write(byte(VOLTAR));
+    if (MODO_OPERACAO == 0) {
+      lcd.setCursor(1,1);
+      lcd.print("*");
+      lcd.setCursor(8,1);
+      lcd.print(" ");
+    } else {
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(8,1);
+      lcd.print("*");
+    }
+    switch (SUBMENU_ATUAL) {
+      case 0:
+        lcd.setCursor(0,1);
+        //lcd.print(">");
+        lcd.write(126);
+        lcd.setCursor(7,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 1:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(7,1);
+        lcd.write(126);
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 2:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(6,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.write(126);
+        break;
+    }
   } else {
     lcd.setCursor(0,1);
-    lcd.print("                ");
+    if (MODO_OPERACAO == 0) lcd.print("   Automatico   "); 
+    else lcd.print("     Manual     ");
   }
 }
 
 void updateLCD() {
   if (!IN_MENU) {
-    statusScreen();    
+    statusScreen();
   } else {
     if (DO_MENU_DRAW) {
       switch (MENU_ATUAL) {
+        // Modo Operacao
         case 0:
           printMenu0();
           break;
+        // Estado Motor
         case 1:
           printMenu1();
           break;
+        // Estado Solenoide
         case 2:
           printMenu2();
           break;
+        // Debug
         case 3:
           printMenu3();
           break;
+        // Erro Operacao
         case 4:
           printMenu4();
           break;
+        // Sair
         case 5:
           printMenu5();
           break;
@@ -546,7 +850,7 @@ void updateLCD() {
 }
 
 void statusScreen() {
-  if (FLOW_STATUS_CHANGED) {
+  if (REFRESH_STATUS_SCREEN) {
     printStatusSkel();
     if (LAST_FLOW_MODE == FLOW_CISTER) {
       lcd.setCursor(7,1);
@@ -561,7 +865,7 @@ void statusScreen() {
       lcd.print("   ");
     }
 
-    FLOW_STATUS_CHANGED = false;
+    REFRESH_STATUS_SCREEN = false;
   }
 
   // Atualizas Nivel Cisterna
@@ -698,6 +1002,14 @@ void heartBeat() {
       lcd.setCursor(15,0);
       lcd.print(" ");
       HEART_BEAT_LAST = LOOP_TIME;
+    }
+  } else {
+    if (IN_SUBMENU && MENU_ATUAL == 3) {
+      // caso esteja no menu de debug, atualiza a tela a cada 1500ms
+      if (LOOP_TIME - HEART_BEAT_LAST >= 1500) {
+        DO_MENU_DRAW = true;
+        HEART_BEAT_LAST = LOOP_TIME;
+      }
     }
   }
 }
