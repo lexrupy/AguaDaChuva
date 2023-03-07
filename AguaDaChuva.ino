@@ -53,6 +53,8 @@
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
 
+#define START_LEVEL_ADDR 2
+
 /*
  *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
  *  MEDIR TEMPO QUE LEVA PARA ENCHER O RESERVATORIO COM O MOTOR DA CISTERNA, E DEIXAR MARGEM
@@ -80,7 +82,6 @@
 // 0 -> iniciar quando vazio
 // 1 -> iniciar quando nivel baixo
 // 2 -> iniciar quando nivel medio
-#define START_LEVEL 1
 
 #define LEVEL_EMPTY 0
 #define LEVEL_LOW   1
@@ -146,6 +147,8 @@ bool RESERV_STARTUP_DONE = false;
 
 int MODO_OPERACAO = 0; // 0 = AUTOMATICO, 1 = MANUAL
 
+int START_LEVEL = LEVEL_LOW;
+
 // ================================ menu ==================================
 int MENU_ATUAL = 0;
 int SUBMENU_ATUAL = 0;
@@ -154,7 +157,7 @@ bool IN_SUBMENU = false;
 
 bool DO_SUBMENU_ACTION = false;
 
-int MENU_SIZE = 5;
+int MENU_SIZE = 6;
 int SUBMENU_SIZE = 2;
 
 bool DO_MENU_DRAW = false;
@@ -189,6 +192,14 @@ void setup() {
 
   CONCES_FLOW_ERROR = EEPROM.read(CONCES_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
+  CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
+  START_LEVEL = EEPROM.read(START_LEVEL_ADDR);
+
+  if (START_LEVEL > LEVEL_MID) {
+    EEPROM.update(START_LEVEL_ADDR, LEVEL_MID);
+    START_LEVEL = LEVEL_MID;
+  }
+  
 
   //------------lcd-----------
 
@@ -327,7 +338,7 @@ void processEncoderButtonPress() {
     IN_MENU = true;
   } else {
     if (!IN_SUBMENU) {
-      if (MENU_ATUAL == 5) {
+      if (MENU_ATUAL == 6) {
         REFRESH_STATUS_SCREEN = true;
         IN_MENU = false;
       } else {
@@ -423,6 +434,20 @@ void processEncoderButtonPress() {
             case 1:
               IN_SUBMENU = false;
               break;
+          }
+          break;
+        case 5:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              IN_SUBMENU = false;
+              break;
+            case 1:
+              IN_SUBMENU = false;
+              break;
+            case 2:
+              IN_SUBMENU = false;
+              break;
+
           }
           break;
       }
@@ -531,7 +556,7 @@ void printStatusSkel() {
   }
 }
 
-void printMenu5(){
+void printMenu6(){
   SUBMENU_SIZE = 0;
   lcd.setCursor(0,0);
   //         1234567890123456
@@ -539,6 +564,74 @@ void printMenu5(){
   lcd.setCursor(0,1);
   lcd.print("                ");
 }
+
+void printMenu5(){
+  SUBMENU_SIZE = 3;
+  lcd.setCursor(0,0);
+  lcd.print("< Nivel Partida>");
+  if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("# Nivel Partida#");
+    lcd.setCursor(0,1);
+    lcd.print("  ");
+    lcd.write(byte(LEVEL_EMPTY));
+    lcd.print("   ");
+    lcd.write(byte(LEVEL_LOW));
+    lcd.print("   ");
+    lcd.write(byte(LEVEL_MID));
+    lcd.print("    ");
+    lcd.write(byte(VOLTAR));
+    switch (SUBMENU_ATUAL) {
+      case 0:
+        lcd.setCursor(0,1);
+        lcd.write(126);
+        lcd.setCursor(4,1);
+        lcd.print(" ");
+        lcd.setCursor(8,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 1:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(4,1);
+        lcd.write(126);
+        lcd.setCursor(8,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 2:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(4,1);
+        lcd.print(" ");
+        lcd.setCursor(8,1);
+        lcd.write(126);
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 3:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(4,1);
+        lcd.print(" ");
+        lcd.setCursor(8,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.write(126);
+        break;
+    }
+  } else {
+    lcd.setCursor(0,1);
+                                 //         1234567890123456
+    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    //         1234567890123456
+    lcd.print("    Desligado   ");
+  }
+}
+
 void printMenu4(){
   SUBMENU_SIZE = 1;
   lcd.setCursor(0,0);
@@ -838,8 +931,12 @@ void updateLCD() {
         case 4:
           printMenu4();
           break;
-        // Sair
+        // Nivel Partida
         case 5:
+          printMenu5();
+          break;
+        // Sair
+        case 6:
           printMenu5();
           break;
       }
