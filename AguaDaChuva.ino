@@ -30,8 +30,8 @@
 #define RESERV_SENS A0
 #define CISTER_SENS A1
 
-#define ROTARY_ENCODER_DT  A2
-#define ROTARY_ENCODER_CLK A3
+#define ROTARY_ENCODER_CLK A2
+#define ROTARY_ENCODER_DT  A3
 #define ROTARY_ENCODER_SW  A4
 
 #define CONCES_FLOW_OUT 2   /* FLUXO DE ÁGUA DA CONSESSIONARIA*/
@@ -154,7 +154,7 @@ bool IN_SUBMENU = false;
 
 bool DO_SUBMENU_ACTION = false;
 
-int MENU_SIZE = 6;
+int MENU_SIZE = 7;
 int SUBMENU_SIZE = 2;
 
 bool DO_MENU_DRAW = false;
@@ -345,7 +345,7 @@ void processEncoderButtonPress() {
     IN_MENU = true;
   } else {
     if (!IN_SUBMENU) {
-      if (MENU_ATUAL == 6) {
+      if (MENU_ATUAL == MENU_SIZE) {
         REFRESH_STATUS_SCREEN = true;
         IN_MENU = false;
       } else {
@@ -460,6 +460,22 @@ void processEncoderButtonPress() {
               break;
           }
           break;
+        case 6:
+          switch (SUBMENU_ATUAL) {
+            case 0:
+              IN_SUBMENU = false;
+              break;
+            case 1:
+              IN_SUBMENU = false;
+              break;
+            case 2:
+              IN_SUBMENU = false;
+              break;
+            case 3:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
       }
     }
   }
@@ -566,13 +582,117 @@ void printStatusSkel() {
   }
 }
 
-void printMenu6(){
+void printMenu7(){
   SUBMENU_SIZE = 0;
   lcd.setCursor(0,0);
   //         1234567890123456
   lcd.print("<     Sair     >");
   lcd.setCursor(0,1);
   lcd.print("                ");
+}
+
+void printMenu6(){
+  SUBMENU_SIZE = 1;
+  lcd.setCursor(0,0);
+  //         1234567890123456
+  lcd.print("<  Seguranca   >");
+if (IN_SUBMENU) {
+    lcd.setCursor(0,0);
+    lcd.print("#  Seguranca   #");
+    lcd.setCursor(0,1);
+    lcd.print("  ");
+    lcd.write(byte(LEVEL_EMPTY));
+    lcd.print("    ");
+    lcd.write(byte(LEVEL_LOW));
+    lcd.print("    ");
+    lcd.write(byte(LEVEL_MID));
+    lcd.print("  ");
+    lcd.write(byte(VOLTAR));
+
+    if (START_LEVEL == 0) {
+      lcd.setCursor(1,1);
+      lcd.print("*");
+      lcd.setCursor(6,1);
+      lcd.print(" ");
+      lcd.setCursor(11,1);
+      lcd.print(" ");
+    } else if (START_LEVEL == 1){
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(6,1);
+      lcd.print("*");
+      lcd.setCursor(11,1);
+      lcd.print(" ");
+    } else if (START_LEVEL == 2){
+      lcd.setCursor(1,1);
+      lcd.print(" ");
+      lcd.setCursor(6,1);
+      lcd.print(" ");
+      lcd.setCursor(11,1);
+      lcd.print("*");
+    }
+
+
+    switch (SUBMENU_ATUAL) {
+      case 0:
+        lcd.setCursor(0,1);
+        lcd.write(126);
+        lcd.setCursor(5,1);
+        lcd.print(" ");
+        lcd.setCursor(10,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 1:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(5,1);
+        lcd.write(126);
+        lcd.setCursor(10,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 2:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(5,1);
+        lcd.print(" ");
+        lcd.setCursor(10,1);
+        lcd.write(126);
+        lcd.setCursor(14,1);
+        lcd.print(" ");
+        break;
+      case 3:
+        lcd.setCursor(0,1);
+        lcd.print(" ");
+        lcd.setCursor(5,1);
+        lcd.print(" ");
+        lcd.setCursor(10,1);
+        lcd.print(" ");
+        lcd.setCursor(14,1);
+        lcd.write(126);
+        break;
+    }
+  } else {
+    lcd.setCursor(0,1);
+    if (START_LEVEL == LEVEL_EMPTY) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_EMPTY));
+      lcd.write(" Vazio     ");
+    } else if (START_LEVEL == LEVEL_LOW) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_LOW));
+      lcd.write(" Baixo     ");
+    } else if (START_LEVEL == LEVEL_MID) {
+      lcd.print("    ");
+      lcd.write(byte(LEVEL_MID));
+      lcd.write(" Medio     ");
+    } else {
+      lcd.print("        -       ");
+    }
+  }
 }
 
 void printMenu5(){
@@ -981,9 +1101,13 @@ void updateLCD() {
         case 5:
           printMenu5();
           break;
-        // Sair
+        // Seguranca
         case 6:
           printMenu6();
+          break;
+        // Sair
+        case 7:
+          printMenu7();
           break;
       }
     }
@@ -994,6 +1118,7 @@ void updateLCD() {
 
 void statusScreen() {
   if (REFRESH_STATUS_SCREEN) {
+    lcd.clear();
     printStatusSkel();
     if (LAST_FLOW_MODE == FLOW_CISTER) {
       lcd.setCursor(7,1);
