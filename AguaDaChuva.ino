@@ -57,6 +57,7 @@
 
 #define CISTER_TIME_ADDR 3
 #define CONCES_TIME_ADDR 4
+#define BL_TIMEOUT_ADDR  5
 
 /*
  *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
@@ -139,7 +140,7 @@ int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
 
 bool REFRESH_STATUS_SCREEN = false;
 int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
-unsigned long LCD_BL_TIMEOUT = 3 * MINUTE; // Tempo LCD Ligado
+int LCD_BL_TIMEOUT = 3; // Tempo LCD Ligado
 unsigned long LAST_ITERATION_TIME = 0;
 
 bool CISTER_STARTUP_DONE = false;
@@ -158,7 +159,7 @@ bool IN_SUBMENU_SELECTION = false;
 
 bool DO_SUBMENU_ACTION = false;
 
-int MENU_SIZE = 7;
+int MENU_SIZE = 8;
 int SUBMENU_SIZE = 2;
 
 bool DO_MENU_DRAW = false;
@@ -195,6 +196,7 @@ void setup() {
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
   START_LEVEL = EEPROM.read(START_LEVEL_ADDR);
+  LCD_BL_TIMEOUT = EEPROM.read(BL_TIMEOUT_ADDR);
 
   byte CISTER_TIME_VALUE = EEPROM.read(CISTER_TIME_ADDR);
   byte CONCES_TIME_VALUE = EEPROM.read(CONCES_TIME_ADDR);
@@ -212,6 +214,11 @@ void setup() {
   if (CONCES_TIME_VALUE > 40) {
     CONCES_TIME_VALUE = 40;
     EEPROM.update(CONCES_TIME_ADDR, CONCES_TIME_VALUE);
+  }
+
+  if (LCD_BL_TIMEOUT > 5) {
+    LCD_BL_TIMEOUT = 5;
+    EEPROM.update(BL_TIMEOUT_ADDR, LCD_BL_TIMEOUT);
   }
 
   // Multiplos de 30 Segundos
@@ -364,7 +371,22 @@ int processEncoderRotation(int direction) {
                 //DO_MENU_DRAW = true;
                 break;
             }
-
+            break;
+          case 7:
+            switch(SUBMENU_ATUAL) {
+              // Submenu Motor
+              case 0:
+                if (direction == 1) {
+                  if (LCD_BL_TIMEOUT < 5) LCD_BL_TIMEOUT++;
+                } else {
+                  if (LCD_BL_TIMEOUT > 1) LCD_BL_TIMEOUT--;
+                }
+                // executar o print aqui mesmo para evitar redraw de toda a tela
+                lcd.setCursor(4,1);
+                lcd.print(LCD_BL_TIMEOUT);
+                //DO_MENU_DRAW = true;
+                break;
+            }
             break;
         }
      
@@ -522,7 +544,7 @@ void processEncoderButtonPress() {
           break;
         // Menu Segurança
         case 6:
-          switch (SUBMENU_ATUAL) {
+          switch ( SUBMENU_ATUAL) {
             case 0:
               IN_SUBMENU_SELECTION = true;
               break;
@@ -531,6 +553,13 @@ void processEncoderButtonPress() {
               break;
             case 2:
               IN_SUBMENU = false;
+              break;
+          }
+          break;
+        case 7:
+          switch  (SUBMENU_ATUAL) {
+            case 0:
+              IN_SUBMENU_SELECTION = true;
               break;
           }
           break;
@@ -559,6 +588,16 @@ void processEncoderButtonPress() {
               break;
           }
           break;
+        case 7:
+          switch ( SUBMENU_ATUAL ) {
+            // SubMenu Tempo Motor
+            case 0:
+              EEPROM.update(BL_TIMEOUT_ADDR, LCD_BL_TIMEOUT);
+              IN_SUBMENU_SELECTION = false;
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
       }
     }
   }
@@ -566,7 +605,7 @@ void processEncoderButtonPress() {
 
 void checkBacklight() {
   // Backlight
-  if (LOOP_TIME - LAST_ITERATION_TIME > LCD_BL_TIMEOUT) {
+  if (LOOP_TIME - LAST_ITERATION_TIME > (LCD_BL_TIMEOUT*MINUTE)) {
     if (LCD_BL_STATE == 1) {
       lcdBackLightOff();
     }
@@ -665,13 +704,37 @@ void printStatusSkel() {
   }
 }
 
-void printMenu7(){
+void printMenu8(){
   SUBMENU_SIZE = 0;
   lcd.setCursor(0,0);
   //         1234567890123456
   lcd.print("<     Sair     >");
   lcd.setCursor(0,1);
   lcd.print("                ");
+}
+
+
+void printMenu7(){
+  SUBMENU_SIZE = 0;
+  lcd.setCursor(0,0);
+  lcd.print("< Tempo LED BL >");
+  lcd.setCursor(0,1);
+  lcd.print(" ");
+  if (IN_SUBMENU) {
+    // Joga direto para a selecao rotativa, visto que nao há outros menus
+    IN_SUBMENU_SELECTION = true;
+    lcd.setCursor(0,0);
+    lcd.print("# Tempo LED BL #");
+    lcd.setCursor(0,1);
+    lcd.write(126);
+  } else {
+    lcd.setCursor(0,1);
+    lcd.print("    ");
+    lcd.print(LCD_BL_TIMEOUT);
+    //         1234567890123456
+    lcd.print(" Minutos   ");
+  }
+  
 }
 
 void printMenu6(){
@@ -1149,9 +1212,13 @@ void updateLCD() {
         case 6:
           printMenu6();
           break;
-        // Sair
+        // Timeout Backlight LCD
         case 7:
           printMenu7();
+          break;
+        // Sair
+        case 8:
+          printMenu8();
           break;
       }
     }
