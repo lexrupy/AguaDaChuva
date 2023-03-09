@@ -55,6 +55,9 @@
 
 #define START_LEVEL_ADDR 2
 
+#define CISTER_TIME_ADDR 3
+#define CONCES_TIME_ADDR 4
+
 /*
  *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
  *  MEDIR TEMPO QUE LEVA PARA ENCHER O RESERVATORIO COM O MOTOR DA CISTERNA, E DEIXAR MARGEM
@@ -69,11 +72,8 @@
 #define FLOW_CONCES 0
 #define FLOW_CISTER 1
 
-#define SECOND 1000
-#define MINUTE 60000
-
-#define MAX_TIME_CISTER_FLOW 10 * MINUTE // DEFAULT 5 MINUTOS
-#define MAX_TIME_CONCES_FLOW 10 * MINUTE // DEFAULT 5 MINUTOS
+#define SECOND 1000L
+#define MINUTE 60000L
 
 #define STARTUP_TIME 3 * SECOND
 #define SENSOR_DB_TIME 3 * SECOND
@@ -103,6 +103,9 @@ byte stateOff[8] = { 0x00, 0x04, 0x0A, 0x11, 0x11, 0x0A, 0x04, 0x00 };//{ 0x00, 
 byte voltarChr[8]= { 0x04, 0x0C, 0x1F, 0x0D, 0x05, 0x01, 0x1F, 0x00 };
 
 unsigned long HEART_BEAT_LAST = 0;
+
+unsigned long MAX_TIME_CISTER_FLOW = 10 * MINUTE; // DEFAULT 5 MINUTOS
+unsigned long MAX_TIME_CONCES_FLOW = 10 * MINUTE; // DEFAULT 5 MINUTOS
 
 int CISTER_LEVEL = 0;
 // Iniciar Nivel do Reservatorio como 3 (Cheio), prevenindo ligar solenoide antes de terminar a leitura
@@ -151,6 +154,7 @@ int MENU_ATUAL = 0;
 int SUBMENU_ATUAL = 0;
 bool IN_MENU = false;
 bool IN_SUBMENU = false;
+bool IN_SUBMENU_SELECTION = false;
 
 bool DO_SUBMENU_ACTION = false;
 
@@ -192,11 +196,28 @@ void setup() {
   CISTER_FLOW_ERROR = EEPROM.read(CISTER_ERROR_ADDR);
   START_LEVEL = EEPROM.read(START_LEVEL_ADDR);
 
+  byte CISTER_TIME_VALUE = EEPROM.read(CISTER_TIME_ADDR);
+  byte CONCES_TIME_VALUE = EEPROM.read(CONCES_TIME_ADDR);
+  
   if (START_LEVEL > LEVEL_MID) {
     EEPROM.update(START_LEVEL_ADDR, LEVEL_EMPTY);
     START_LEVEL = LEVEL_EMPTY;
   }
-  
+
+  if (CISTER_TIME_VALUE > 40) {
+    CISTER_TIME_VALUE = 40;
+    EEPROM.update(CISTER_TIME_ADDR, CISTER_TIME_VALUE);
+  }
+
+  if (CONCES_TIME_VALUE > 40) {
+    CONCES_TIME_VALUE = 40;
+    EEPROM.update(CONCES_TIME_ADDR, CONCES_TIME_VALUE);
+  }
+
+  // Multiplos de 30 Segundos
+  MAX_TIME_CISTER_FLOW = 30000L * CISTER_TIME_VALUE;
+  MAX_TIME_CONCES_FLOW = 30000L * CONCES_TIME_VALUE;
+ 
 
   //------------lcd-----------
 
@@ -312,17 +333,55 @@ int processEncoderRotation(int direction) {
   if (IN_MENU) {
     // NO SUBMENU
     if (IN_SUBMENU) {
-      result = 1;
-      if (direction == 1) {
-        if (SUBMENU_ATUAL == SUBMENU_SIZE) SUBMENU_ATUAL = 0;
-        else if (SUBMENU_ATUAL < SUBMENU_SIZE) SUBMENU_ATUAL++;
-      } else {
-        if (SUBMENU_ATUAL > 0) SUBMENU_ATUAL--;
-        else SUBMENU_ATUAL = SUBMENU_SIZE;
-      }
+      // Selecao de Valor de Submenu
+      if (IN_SUBMENU_SELECTION) {
+        switch(MENU_ATUAL) {
+          // Menu de Segurança
+          case 6:
+            switch(SUBMENU_ATUAL) {
+              // Submenu Motor
+              case 0:
+                if (direction == 1) {
+                  if (MAX_TIME_CISTER_FLOW < 1200000) MAX_TIME_CISTER_FLOW += 30000L;
+                } else {
+                  if (MAX_TIME_CISTER_FLOW > 30000) MAX_TIME_CISTER_FLOW -= 30000L;
+                }
+                // executar o print aqui mesmo para evitar redraw de toda a tela
+                lcd.setCursor(5,1);
+                printTime(MAX_TIME_CISTER_FLOW);
+                //DO_MENU_DRAW = true;
+                break;
+              // Submenu Solenoide
+              case 1:
+                if (direction == 1) {
+                  if (MAX_TIME_CONCES_FLOW < 1200000) MAX_TIME_CONCES_FLOW += 30000L;
+                } else {
+                  if (MAX_TIME_CONCES_FLOW > 30000) MAX_TIME_CONCES_FLOW -= 30000L;
+                }
+                // executar o print aqui mesmo para evitar redraw de toda a tela
+                lcd.setCursor(5,1);
+                printTime(MAX_TIME_CONCES_FLOW);
+                //DO_MENU_DRAW = true;
+                break;
+            }
 
-      // Se submen de debug, dispara draw
-      if (MENU_ATUAL == 3) DO_MENU_DRAW = true;
+            break;
+        }
+     
+      // Rotação normal entre submenus
+      } else {
+        result = 1;
+        if (direction == 1) {
+          if (SUBMENU_ATUAL == SUBMENU_SIZE) SUBMENU_ATUAL = 0;
+          else if (SUBMENU_ATUAL < SUBMENU_SIZE) SUBMENU_ATUAL++;
+        } else {
+          if (SUBMENU_ATUAL > 0) SUBMENU_ATUAL--;
+          else SUBMENU_ATUAL = SUBMENU_SIZE;
+        }
+
+        // Se submen de debug, dispara draw
+        if (MENU_ATUAL == 3) DO_MENU_DRAW = true;
+      }
 
     // NO MENU PRINCIPAL
     } else {
@@ -352,7 +411,7 @@ void processEncoderButtonPress() {
         SUBMENU_ATUAL = 0;
         IN_SUBMENU = true;
       }
-    } else {
+    } else if (!IN_SUBMENU_SELECTION) {
       // Executa a acao de acordo com o menu e submenu selecionado
       switch (MENU_ATUAL) {
         // Menu Modo Operacao
@@ -443,6 +502,7 @@ void processEncoderButtonPress() {
               break;
           }
           break;
+        // Menu Nivel Partida
         case 5:
           switch (SUBMENU_ATUAL) {
             case 0:
@@ -460,19 +520,42 @@ void processEncoderButtonPress() {
               break;
           }
           break;
+        // Menu Segurança
         case 6:
           switch (SUBMENU_ATUAL) {
             case 0:
-              IN_SUBMENU = false;
+              IN_SUBMENU_SELECTION = true;
               break;
             case 1:
-              IN_SUBMENU = false;
+              IN_SUBMENU_SELECTION = true;
               break;
             case 2:
               IN_SUBMENU = false;
               break;
-            case 3:
-              IN_SUBMENU = false;
+          }
+          break;
+      }
+    // Selecao de Opcao de Submenu por rotacao do encoder
+    } else {
+      // Por algum motivo este calculo dentro do switch do submenu, não funciona
+      // por tanto foi movido para fora do switch case
+      int CISTER_TIME = MAX_TIME_CISTER_FLOW / 30000;
+      int CONCES_TIME = MAX_TIME_CONCES_FLOW / 30000;
+      switch ( MENU_ATUAL ) {
+        case 6:
+          switch ( SUBMENU_ATUAL ) {
+            // SubMenu Tempo Motor
+            case 0:
+              EEPROM.update(CISTER_TIME_ADDR, CISTER_TIME);
+              IN_SUBMENU_SELECTION = false;
+              break;
+            // SubMenu Tempo Solenoide
+            case 1:
+              EEPROM.update(CONCES_TIME_ADDR, CONCES_TIME);
+              IN_SUBMENU_SELECTION = false;
+              break;
+            case 2:
+              IN_SUBMENU_SELECTION = false;
               break;
           }
           break;
@@ -592,84 +675,56 @@ void printMenu7(){
 }
 
 void printMenu6(){
-  SUBMENU_SIZE = 1;
+  SUBMENU_SIZE = 2;
   lcd.setCursor(0,0);
   //         1234567890123456
   lcd.print("<  Seguranca   >");
-if (IN_SUBMENU) {
+  if (IN_SUBMENU) {
     lcd.setCursor(0,0);
     lcd.print("#  Seguranca   #");
     lcd.setCursor(0,1);
-    lcd.print("  ");
-    lcd.write(byte(LEVEL_EMPTY));
-    lcd.print("    ");
-    lcd.write(byte(LEVEL_LOW));
-    lcd.print("    ");
-    lcd.write(byte(LEVEL_MID));
-    lcd.print("  ");
+    lcd.print(" Motor  Sole.  ");
     lcd.write(byte(VOLTAR));
-
-    if (START_LEVEL == 0) {
-      lcd.setCursor(1,1);
-      lcd.print("*");
-      lcd.setCursor(6,1);
-      lcd.print(" ");
-      lcd.setCursor(11,1);
-      lcd.print(" ");
-    } else if (START_LEVEL == 1){
-      lcd.setCursor(1,1);
-      lcd.print(" ");
-      lcd.setCursor(6,1);
-      lcd.print("*");
-      lcd.setCursor(11,1);
-      lcd.print(" ");
-    } else if (START_LEVEL == 2){
-      lcd.setCursor(1,1);
-      lcd.print(" ");
-      lcd.setCursor(6,1);
-      lcd.print(" ");
-      lcd.setCursor(11,1);
-      lcd.print("*");
-    }
-
 
     switch (SUBMENU_ATUAL) {
       case 0:
-        lcd.setCursor(0,1);
-        lcd.write(126);
-        lcd.setCursor(5,1);
-        lcd.print(" ");
-        lcd.setCursor(10,1);
-        lcd.print(" ");
-        lcd.setCursor(14,1);
-        lcd.print(" ");
+        if (IN_SUBMENU_SELECTION) {
+          lcd.setCursor(0,0);
+          lcd.print("Tempo Max Motor:");
+          lcd.setCursor(0,1);
+          lcd.print("     ");
+          printTime(MAX_TIME_CISTER_FLOW);
+          lcd.print("      ");
+        } else {
+          lcd.setCursor(0,1);
+          lcd.write(126);
+          lcd.setCursor(7,1);
+          lcd.print(" ");
+          lcd.setCursor(14,1);
+          lcd.print(" ");
+        }
         break;
       case 1:
-        lcd.setCursor(0,1);
-        lcd.print(" ");
-        lcd.setCursor(5,1);
-        lcd.write(126);
-        lcd.setCursor(10,1);
-        lcd.print(" ");
-        lcd.setCursor(14,1);
-        lcd.print(" ");
+        if (IN_SUBMENU_SELECTION) {
+          lcd.setCursor(0,0);
+          lcd.print("Tempo Max Solen:");
+          lcd.setCursor(0,1);
+          lcd.print("     ");
+          printTime(MAX_TIME_CONCES_FLOW);
+          lcd.print("      ");
+        } else {
+          lcd.setCursor(0,1);
+          lcd.print(" ");
+          lcd.setCursor(7,1);
+          lcd.write(126);
+          lcd.setCursor(14,1);
+          lcd.print(" ");
+        }
         break;
       case 2:
         lcd.setCursor(0,1);
         lcd.print(" ");
-        lcd.setCursor(5,1);
-        lcd.print(" ");
-        lcd.setCursor(10,1);
-        lcd.write(126);
-        lcd.setCursor(14,1);
-        lcd.print(" ");
-        break;
-      case 3:
-        lcd.setCursor(0,1);
-        lcd.print(" ");
-        lcd.setCursor(5,1);
-        lcd.print(" ");
-        lcd.setCursor(10,1);
+        lcd.setCursor(7,1);
         lcd.print(" ");
         lcd.setCursor(14,1);
         lcd.write(126);
@@ -677,21 +732,10 @@ if (IN_SUBMENU) {
     }
   } else {
     lcd.setCursor(0,1);
-    if (START_LEVEL == LEVEL_EMPTY) {
-      lcd.print("    ");
-      lcd.write(byte(LEVEL_EMPTY));
-      lcd.write(" Vazio     ");
-    } else if (START_LEVEL == LEVEL_LOW) {
-      lcd.print("    ");
-      lcd.write(byte(LEVEL_LOW));
-      lcd.write(" Baixo     ");
-    } else if (START_LEVEL == LEVEL_MID) {
-      lcd.print("    ");
-      lcd.write(byte(LEVEL_MID));
-      lcd.write(" Medio     ");
-    } else {
-      lcd.print("        -       ");
-    }
+    lcd.print("M:");
+    printTime(MAX_TIME_CISTER_FLOW);
+    lcd.print("  S:");
+    printTime(MAX_TIME_CONCES_FLOW);
   }
 }
 
