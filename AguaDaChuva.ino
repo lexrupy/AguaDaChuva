@@ -280,27 +280,27 @@ void loop() {
 
 void controleDeFluxo(){
     if (CISTER_STARTUP_DONE && RESERV_STARTUP_DONE) {
-    if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
-      if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
-        if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
-          /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
-          TIME_CISTER_FLOW = LOOP_TIME;
-          TOTAL_TIME_CISTER_FLOW = 0;
-          solenoidOff();
-          motorOn();
+      if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
+        if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
+          if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
+            /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
+            TIME_CISTER_FLOW = LOOP_TIME;
+            TOTAL_TIME_CISTER_FLOW = 0;
+            solenoidOff();
+            motorOn();
+          }
+        } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
+          if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
+            TIME_CONCES_FLOW = LOOP_TIME;
+            TOTAL_TIME_CONCES_FLOW = 0;
+            motorOff();
+            solenoidOn();
+          }
         }
-      } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
-        if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
-          TIME_CONCES_FLOW = LOOP_TIME;
-          TOTAL_TIME_CONCES_FLOW = 0;
-          motorOff();
-          solenoidOn();
-        }
+      } else {
+        motorOff();
+        solenoidOff();
       }
-    } else {
-      motorOff();
-      solenoidOff();
-    }
   }
 }
 
@@ -464,12 +464,20 @@ void processEncoderButtonPress() {
               if (CISTER_FLOW_STATUS == 0) {
                 TIME_CISTER_FLOW = LOOP_TIME;
                 TOTAL_TIME_CISTER_FLOW = 0;
+                // Reseta o Empty State do reservatório, caso contrario o motor
+                // desativara assim que ligar
+                if (MODO_OPERACAO == 0) {
+                  RESERV_EMPTY_STATE = true;
+                }
                 motorOn();
               }
               DO_MENU_DRAW = true;
               break;
             case 1:
-              if (CISTER_FLOW_STATUS == 1) motorOff();
+              if (CISTER_FLOW_STATUS == 1) {
+                motorOff();
+                RESERV_EMPTY_STATE = false;
+              }
               DO_MENU_DRAW = true;
               break;
             // Voltar
