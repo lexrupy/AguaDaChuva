@@ -52,12 +52,16 @@
 
 #define CISTER_ERROR_ADDR 0
 #define CONCES_ERROR_ADDR 1
-
 #define START_LEVEL_ADDR 2
-
 #define CISTER_TIME_ADDR 3
 #define CONCES_TIME_ADDR 4
 #define BL_TIMEOUT_ADDR  5
+#define CISTER_COUNT_ADDR 6 // INTEGER 2 BYTES
+#define CONCES_COUNT_ADDR 8 // INTEGER 2 BYTES
+#define CISTER_LAST_TIME_ADDR 10  // UNSIGNED LONG 4 BYTES
+#define CONCES_LAST_TIME_ADDR 14  // UNSIGNED LONG 4 BYTES
+#define LAST_FLOW_MODE_ADDR 18    // 1 BYTE
+
 
 /*
  *  DEFINIR TEMPO MAXIMO QUE O SISTEMA PERMANECE ABERTO ANTES DE DESLIGAMENTO DE SEGURANCA
@@ -136,7 +140,10 @@ unsigned long TOTAL_TIME_CONCES_FLOW = 0;
 
 unsigned long LOOP_TIME = 0;
 
-int LAST_FLOW_MODE = -1; // Flow Mode: CONCES/CISTER
+byte LAST_FLOW_MODE = 255; // Flow Mode: CONCES/CISTER
+
+unsigned int CONCES_COUNTER = 0;
+unsigned int CISTER_COUNTER = 0;
 
 bool REFRESH_STATUS_SCREEN = false;
 int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
@@ -226,6 +233,36 @@ void setup() {
   MAX_TIME_CONCES_FLOW = 30000L * CONCES_TIME_VALUE;
  
 
+  LAST_FLOW_MODE = EEPROM.read(LAST_FLOW_MODE_ADDR);
+
+  
+  EEPROM.get(CISTER_COUNT_ADDR, CISTER_COUNTER);
+  if (CISTER_COUNTER > 9999) {
+    CISTER_COUNTER = 0;
+    EEPROM.put(CISTER_COUNT_ADDR, CISTER_COUNTER);
+  }
+
+  
+  EEPROM.get(CONCES_COUNT_ADDR, CONCES_COUNTER);
+  if (CONCES_COUNTER > 9999) {
+    CONCES_COUNTER = 0;
+    EEPROM.put(CONCES_COUNT_ADDR, CONCES_COUNTER);
+  }
+
+  EEPROM.get(CISTER_LAST_TIME_ADDR, TOTAL_TIME_CISTER_FLOW);
+  if (TOTAL_TIME_CISTER_FLOW >  3599000L) {
+    TOTAL_TIME_CISTER_FLOW = 3599000L;
+    EEPROM.put(CISTER_LAST_TIME_ADDR, TOTAL_TIME_CISTER_FLOW);
+  }
+  
+  EEPROM.get(CONCES_LAST_TIME_ADDR, TOTAL_TIME_CONCES_FLOW);
+  if (TOTAL_TIME_CONCES_FLOW >  3599000L) {
+    TOTAL_TIME_CONCES_FLOW = 3599000L;
+    EEPROM.put(CONCES_LAST_TIME_ADDR, TOTAL_TIME_CONCES_FLOW);
+  }
+
+
+
   //------------lcd-----------
 
   lcd.begin(16, 2);
@@ -252,9 +289,15 @@ void setup() {
   
   lcd.clear();
 
+  REFRESH_STATUS_SCREEN = true;
+
   printStatusSkel();
 
   Serial.begin(9600);
+
+
+  Serial.print("LastFlow: ");
+  Serial.println(LAST_FLOW_MODE);
 
   PCICR |= (1 << PCIE1);
   PCMSK1 |= (1 << PCINT10) | (1 << PCINT11);
@@ -288,6 +331,9 @@ void controleDeFluxo(){
             TOTAL_TIME_CISTER_FLOW = 0;
             solenoidOff();
             motorOn();
+            EEPROM.get(CISTER_COUNT_ADDR, CISTER_COUNTER);
+            CISTER_COUNTER++;
+            EEPROM.put(CISTER_COUNT_ADDR, CISTER_COUNTER);
           }
         } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
           if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
@@ -295,6 +341,9 @@ void controleDeFluxo(){
             TOTAL_TIME_CONCES_FLOW = 0;
             motorOff();
             solenoidOn();
+            EEPROM.get(CONCES_COUNT_ADDR, CONCES_COUNTER);
+            CONCES_COUNTER++;
+            EEPROM.put(CONCES_COUNT_ADDR, CONCES_COUNTER);
           }
         }
       } else {
@@ -636,35 +685,39 @@ void lcdBackLightOn() {
 
 void motorOn() {
   if (CISTER_FLOW_STATUS == 0) {
-    digitalWrite(CISTER_FLOW_OUT, LOW);
-    CISTER_FLOW_STATUS = 1;
     LAST_FLOW_MODE = FLOW_CISTER;
+    EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CISTER);
+    CISTER_FLOW_STATUS = 1;
     REFRESH_STATUS_SCREEN = true;
-  }
-}
-
-void solenoidOff() {
-  if (CONCES_FLOW_STATUS == 1) {
-    digitalWrite(CONCES_FLOW_OUT, HIGH);
-    CONCES_FLOW_STATUS = 0;
-    REFRESH_STATUS_SCREEN = true;
-  }
-}
-
-void motorOff() {
-  if (CISTER_FLOW_STATUS == 1) {
-    digitalWrite(CISTER_FLOW_OUT, HIGH);
-    CISTER_FLOW_STATUS = 0;
-    REFRESH_STATUS_SCREEN = true;
+    digitalWrite(CISTER_FLOW_OUT, LOW);
   }
 }
 
 void solenoidOn() {
   if (CONCES_FLOW_STATUS == 0) {
-    digitalWrite(CONCES_FLOW_OUT, LOW);
+    LAST_FLOW_MODE = FLOW_CONCES;
+    EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CONCES);
     CONCES_FLOW_STATUS = 1;
     REFRESH_STATUS_SCREEN = true;
-    LAST_FLOW_MODE = FLOW_CONCES;
+    digitalWrite(CONCES_FLOW_OUT, LOW);
+  }
+}
+
+void solenoidOff() {
+  if (CONCES_FLOW_STATUS == 1) {
+    CONCES_FLOW_STATUS = 0;
+    REFRESH_STATUS_SCREEN = true;
+    EEPROM.put(CONCES_LAST_TIME_ADDR, TOTAL_TIME_CONCES_FLOW);
+    digitalWrite(CONCES_FLOW_OUT, HIGH);
+  }
+}
+
+void motorOff() {
+  if (CISTER_FLOW_STATUS == 1) {
+    CISTER_FLOW_STATUS = 0;
+    REFRESH_STATUS_SCREEN = true;
+    EEPROM.put(CISTER_LAST_TIME_ADDR, TOTAL_TIME_CISTER_FLOW);
+    digitalWrite(CISTER_FLOW_OUT, HIGH);
   }
 }
 
@@ -701,7 +754,8 @@ void printStatusSkel() {
   }
   lcd.write(byte(HEART));
   lcd.setCursor(0, 1);
-  lcd.print("Ocioso     --:--");
+  //         XXXXXXXXXXXXXXXX
+  lcd.print("Off        --:--");
   if (CONCES_FLOW_ERROR == 1 | CISTER_FLOW_ERROR == 1) {
     lcd.setCursor(0, 1);
     if (CONCES_FLOW_ERROR == 1) {
@@ -959,47 +1013,21 @@ void printMenu3(){
   lcd.print("<     DEBUG    >");
   if (IN_SUBMENU) {
     lcd.setCursor(0,1);
-    lcd.print("                ");
+    lcd.print("M:     S:       ");
     lcd.setCursor(0,0);
-    lcd.print("CX:   CT:  DEBUG");
-  // Atualizas Nivel Cisterna
-    lcd.setCursor(9, 0);
-    switch (CISTER_LEVEL_READ) {
-      case 0:
-        lcd.write(byte(LEVEL_EMPTY));
-        break;
-      case 1:
-        lcd.write(byte(LEVEL_LOW));
-        break;
-      case 2:
-        lcd.write(byte(LEVEL_MID));
-        break;
-      case 3:
-        lcd.write(byte(LEVEL_FULL));
-        break;
-    }
+    lcd.print("CX:      CT:    ");
 
-    // Atualiza Nivel Caixa
-    lcd.setCursor(3, 0);
-    switch (RESERV_LEVEL_READ) {
-      case 0:
-        lcd.write(byte(LEVEL_EMPTY));
-        break;
-      case 1:
-        lcd.write(byte(LEVEL_LOW));
-        break;
-      case 2:
-        lcd.write(byte(LEVEL_MID));
-        break;
-      case 3:
-        lcd.write(byte(LEVEL_FULL));
-        break;
-    }
-    lcd.setCursor(0,1);
-    //         1234567890123456
-    lcd.setCursor(0,1);
+    char buffer[4];
+    sprintf(buffer, "%04d", CISTER_COUNTER);
+    lcd.setCursor(2,1);
+    lcd.print(buffer);
+    sprintf(buffer, "%04d", CONCES_COUNTER);
+    lcd.setCursor(9,1);
+    lcd.print(buffer);
+
+    lcd.setCursor(3,0);
     lcd.print(analogRead(RESERV_SENS));
-    lcd.setCursor(6,1);
+    lcd.setCursor(12,0);
     lcd.print(analogRead(CISTER_SENS));
     lcd.setCursor(14,1);
     lcd.write(126);
@@ -1237,21 +1265,23 @@ void updateLCD() {
 
 void statusScreen() {
   if (REFRESH_STATUS_SCREEN) {
+    char buffer[4];
     lcd.clear();
     printStatusSkel();
+    lcd.setCursor(4,1);
     if (LAST_FLOW_MODE == FLOW_CISTER) {
-      lcd.setCursor(7,1);
-      lcd.print("Mot>");
+      sprintf(buffer, "%04d", CISTER_COUNTER);
+      lcd.print(buffer);
+      lcd.print(" M ");
       printTime(TOTAL_TIME_CISTER_FLOW);
     } else if (LAST_FLOW_MODE == FLOW_CONCES) {
-      lcd.setCursor(7,1);
-      lcd.print("Sol>");
+      sprintf(buffer, "%04d", CONCES_COUNTER);
+      lcd.print(buffer);
+      lcd.print(" S ");
       printTime(TOTAL_TIME_CONCES_FLOW);
     } else {
-      lcd.setCursor(7,1);
-      lcd.print("   ");
+      lcd.print("0000 - ");
     }
-
     REFRESH_STATUS_SCREEN = false;
   }
 
