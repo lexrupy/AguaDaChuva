@@ -166,7 +166,7 @@ bool IN_SUBMENU_SELECTION = false;
 
 bool DO_SUBMENU_ACTION = false;
 
-int MENU_SIZE = 8;
+int MENU_SIZE = 9;
 int SUBMENU_SIZE = 2;
 
 bool DO_MENU_DRAW = false;
@@ -261,8 +261,6 @@ void setup() {
     EEPROM.put(CONCES_LAST_TIME_ADDR, TOTAL_TIME_CONCES_FLOW);
   }
 
-
-
   //------------lcd-----------
 
   lcd.begin(16, 2);
@@ -331,7 +329,6 @@ void controleDeFluxo(){
             TOTAL_TIME_CISTER_FLOW = 0;
             solenoidOff();
             motorOn();
-            EEPROM.get(CISTER_COUNT_ADDR, CISTER_COUNTER);
             CISTER_COUNTER++;
             EEPROM.put(CISTER_COUNT_ADDR, CISTER_COUNTER);
           }
@@ -341,7 +338,6 @@ void controleDeFluxo(){
             TOTAL_TIME_CONCES_FLOW = 0;
             motorOff();
             solenoidOn();
-            EEPROM.get(CONCES_COUNT_ADDR, CONCES_COUNTER);
             CONCES_COUNTER++;
             EEPROM.put(CONCES_COUNT_ADDR, CONCES_COUNTER);
           }
@@ -451,7 +447,7 @@ int processEncoderRotation(int direction) {
         }
 
         // Se submen de debug, dispara draw
-        if (MENU_ATUAL == 3) DO_MENU_DRAW = true;
+        if (MENU_ATUAL == 3 || MENU_ATUAL == 8) DO_MENU_DRAW = true;
       }
 
     // NO MENU PRINCIPAL
@@ -620,6 +616,13 @@ void processEncoderButtonPress() {
               break;
           }
           break;
+        case 8:
+          switch  (SUBMENU_ATUAL) {
+            case 0:
+              IN_SUBMENU = false;
+              break;
+          }
+          break;
       }
     // Selecao de Opcao de Submenu por rotacao do encoder
     } else {
@@ -766,7 +769,7 @@ void printStatusSkel() {
   }
 }
 
-void printMenu8(){
+void printMenu9(){
   SUBMENU_SIZE = 0;
   lcd.setCursor(0,0);
   //         1234567890123456
@@ -775,6 +778,25 @@ void printMenu8(){
   lcd.print("                ");
 }
 
+
+void printMenu8(){
+  SUBMENU_SIZE = 0;
+  lcd.setCursor(0,0);
+  lcd.print("<    UpTime    >");
+  lcd.setCursor(0,1);
+  lcd.print(" ");
+  if (IN_SUBMENU) {
+    // Joga direto para a selecao rotativa, visto que nao há outros menus
+    lcd.setCursor(0,0);
+    lcd.print("#    UpTime    #");
+    lcd.setCursor(0,1);
+    printTime(LOOP_TIME, true);
+  } else {
+    lcd.setCursor(0,1);
+    printTime(LOOP_TIME, true);
+  }
+  
+}
 
 void printMenu7(){
   SUBMENU_SIZE = 0;
@@ -1252,9 +1274,13 @@ void updateLCD() {
         case 7:
           printMenu7();
           break;
-        // Sair
+        // Uptime
         case 8:
           printMenu8();
+          break;
+        // Sair
+        case 9:
+          printMenu9();
           break;
       }
     }
@@ -1421,7 +1447,7 @@ void heartBeat() {
       HEART_BEAT_LAST = LOOP_TIME;
     }
   } else {
-    if (IN_SUBMENU && MENU_ATUAL == 3) {
+    if (IN_SUBMENU && (MENU_ATUAL == 3 || MENU_ATUAL == 8)) {
       // caso esteja no menu de debug, atualiza a tela a cada 1500ms
       if (LOOP_TIME - HEART_BEAT_LAST >= 1500) {
         DO_MENU_DRAW = true;
@@ -1431,8 +1457,13 @@ void heartBeat() {
   }
 }
 
-// argument is time in milliseconds
 void printTime(unsigned long t_milli)
+{
+  printTime(t_milli, false);
+}
+
+// argument is time in milliseconds
+void printTime(unsigned long t_milli, bool print_days)
 {
     char buffer[20];
     int days, hours, mins, secs;
@@ -1462,8 +1493,13 @@ void printTime(unsigned long t_milli)
     // in the number of days, hours and minutes. In other words, it is the
     // number of seconds.
     secs = inttime;
-
-    // Don't bother to print days
-    sprintf(buffer, "%02d:%02d", mins, secs);
-    lcd.print(buffer);
+    if (print_days) {
+      // Don't bother to print days
+      sprintf(buffer, "%02d dias %02d:%02d:%02d", days, hours, mins, secs);
+      lcd.print(buffer);
+    } else {
+      // Don't bother to print days
+      sprintf(buffer, "%02d:%02d", mins, secs);
+      lcd.print(buffer);
+    }
 }
