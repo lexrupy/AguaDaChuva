@@ -139,7 +139,7 @@ unsigned long TOTAL_TIME_CISTER_FLOW = 0;
 unsigned long TOTAL_TIME_CONCES_FLOW = 0;
 
 
-unsigned int LOOP_TIME_CYCLES = 0;
+unsigned int LOOP_TIME_CYCLES = 1;
 
 unsigned long LAST_LOOP_TIME = 0;
 unsigned long LOOP_TIME = 0;
@@ -799,16 +799,15 @@ void printMenu8(){
     lcd.setCursor(0,0);
     lcd.print("#    UpTime    #");
     lcd.setCursor(0,1);
-    lcd.print("     ");
+    lcd.print("    ");
     printTime(LOOP_TIME, true);
-    lcd.setCursor(0,1);
+    lcd.setCursor(1,1);
     lcd.print(LOOP_TIME_CYCLES);
-
   } else {
     lcd.setCursor(0,1);
-    lcd.print("     ");
+    lcd.print("    ");
     printTime(LOOP_TIME, true);
-    lcd.setCursor(0,1);
+    lcd.setCursor(1,1);
     lcd.print(LOOP_TIME_CYCLES);
   }
   
