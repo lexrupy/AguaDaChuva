@@ -291,11 +291,11 @@ void setup() {
 
   printStatusSkel();
 
-  Serial.begin(9600);
+  // Serial.begin(9600);
 
 
-  Serial.print("LastFlow: ");
-  Serial.println(LAST_FLOW_MODE);
+  // Serial.print("LastFlow: ");
+  // Serial.println(LAST_FLOW_MODE);
 
   PCICR |= (1 << PCIE1);
   PCMSK1 |= (1 << PCINT10) | (1 << PCINT11);
