@@ -138,6 +138,10 @@ unsigned long TIME_CONCES_FLOW = 0;
 unsigned long TOTAL_TIME_CISTER_FLOW = 0;
 unsigned long TOTAL_TIME_CONCES_FLOW = 0;
 
+
+unsigned int LOOP_TIME_CYCLES = 0;
+
+unsigned long LAST_LOOP_TIME = 0;
 unsigned long LOOP_TIME = 0;
 
 byte LAST_FLOW_MODE = 255; // Flow Mode: CONCES/CISTER
@@ -306,7 +310,12 @@ ISR(PCINT1_vect) {
 }
 
 void loop() {
+  LAST_LOOP_TIME = LOOP_TIME;
   LOOP_TIME = millis();
+  // Completou um ciclo de 49 dias 17:02:47.295
+  if (LOOP_TIME < LAST_LOOP_TIME) {
+    LOOP_TIME_CYCLES++;
+  }
   readMenuSwitch();
   readCisternStatus();
   readReservatoryStatus();
@@ -790,10 +799,17 @@ void printMenu8(){
     lcd.setCursor(0,0);
     lcd.print("#    UpTime    #");
     lcd.setCursor(0,1);
+    lcd.print("     ");
     printTime(LOOP_TIME, true);
+    lcd.setCursor(0,1);
+    lcd.print(LOOP_TIME_CYCLES);
+
   } else {
     lcd.setCursor(0,1);
+    lcd.print("     ");
     printTime(LOOP_TIME, true);
+    lcd.setCursor(0,1);
+    lcd.print(LOOP_TIME_CYCLES);
   }
   
 }
@@ -1495,7 +1511,7 @@ void printTime(unsigned long t_milli, bool print_days)
     secs = inttime;
     if (print_days) {
       // Don't bother to print days
-      sprintf(buffer, "%02d dias %02d:%02d:%02d", days, hours, mins, secs);
+      sprintf(buffer, "%02d %02d:%02d:%02d", days, hours, mins, secs);
       lcd.print(buffer);
     } else {
       // Don't bother to print days
