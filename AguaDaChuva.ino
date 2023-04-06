@@ -26,7 +26,6 @@
 #include <LiquidCrystal.h>
 #include <RotaryEncoder.h>
 
-
 #define RESERV_SENS A0
 #define CISTER_SENS A1
 
@@ -1129,7 +1128,7 @@ void printMenu2(){
   } else {
     lcd.setCursor(0,1);
                                  //         1234567890123456
-    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    if (CONCES_FLOW_STATUS == 1) lcd.print("     Ligado     ");
     //         1234567890123456
     lcd.print("    Desligado   ");
   }
