@@ -780,7 +780,7 @@ void printStatusSkel() {
   lcd.setCursor(0, 1);
   //         XXXXXXXXXXXXXXXX
   lcd.print("Off        --:--");
-  if (CONCES_FLOW_ERROR == WITH_ERROR | CISTER_FLOW_ERROR == WITH_ERROR) {
+  if (CONCES_FLOW_ERROR == WITH_ERROR || CISTER_FLOW_ERROR == WITH_ERROR) {
     lcd.setCursor(0, 1);
     if (CONCES_FLOW_ERROR == WITH_ERROR) {
       lcd.print("ERRO-SL");
