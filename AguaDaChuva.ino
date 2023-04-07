@@ -73,6 +73,19 @@
 
 */
 
+
+#define ST_OFF 0
+#define ST_ON 1
+
+
+#define ST_IDLE 0
+#define ST_RUNNING 1
+
+
+#define NO_ERROR 0
+#define WITH_ERROR 1
+
+
 #define FLOW_CONCES 0
 #define FLOW_CISTER 1
 
@@ -102,32 +115,32 @@ byte lvlLow[8]   = { 0x0E, 0x11, 0x11, 0x11, 0x11, 0x1F, 0x1F, 0x1F };
 byte lvlMid[8]   = { 0x0E, 0x11, 0x11, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F };
 byte lvlFull[8]  = { 0x0E, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F };
 byte heartChr[8] = { 0x00, 0x0A, 0x1F, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
-byte stateOn[8]  = { 0x00, 0x04, 0x0E, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };//{ 0x0C, 0x12, 0x12, 0x0C, 0x12, 0x1A, 0x16, 0x12 };//{ 0x00, 0x0E, 0x15, 0x1F, 0x1F, 0x15, 0x0E, 0x00 };
-byte stateOff[8] = { 0x00, 0x04, 0x0A, 0x11, 0x11, 0x0A, 0x04, 0x00 };//{ 0x00, 0x0E, 0x11, 0x11, 0x11, 0x11, 0x0E, 0x00 };
+byte stateOn[8]  = { 0x00, 0x04, 0x0E, 0x1F, 0x1F, 0x0E, 0x04, 0x00 };
+byte stateOff[8] = { 0x00, 0x04, 0x0A, 0x11, 0x11, 0x0A, 0x04, 0x00 };
 byte voltarChr[8]= { 0x04, 0x0C, 0x1F, 0x0D, 0x05, 0x01, 0x1F, 0x00 };
 
 unsigned long HEART_BEAT_LAST = 0;
 
-unsigned long MAX_TIME_CISTER_FLOW = 10 * MINUTE; // DEFAULT 5 MINUTOS
-unsigned long MAX_TIME_CONCES_FLOW = 10 * MINUTE; // DEFAULT 5 MINUTOS
+unsigned long MAX_TIME_CISTER_FLOW = 7 * MINUTE; // DEFAULT 7 MINUTOS
+unsigned long MAX_TIME_CONCES_FLOW = 7 * MINUTE; // DEFAULT 7 MINUTOS
 
-int CISTER_LEVEL = 0;
-// Iniciar Nivel do Reservatorio como 3 (Cheio), prevenindo ligar solenoide antes de terminar a leitura
-int RESERV_LEVEL = 3;
+int CISTER_LEVEL = LEVEL_EMPTY;
+// Iniciar Nivel do Reservatorio como 3 (Cheio), prevenindo ligar solenoide antes de terminar a leitura inicial
+int RESERV_LEVEL = LEVEL_FULL;
 
-int RESERV_LEVEL_READ = 0;
-int CISTER_LEVEL_READ = 0;
+int RESERV_LEVEL_READ = LEVEL_EMPTY;
+int CISTER_LEVEL_READ = LEVEL_EMPTY;
 unsigned long RESERV_LEVEL_READ_TIME = 0;
 unsigned long CISTER_LEVEL_READ_TIME = 0;
 
 bool RESERV_EMPTY_STATE = false;
 bool CISTER_EMPTY_STATE = false;
 
-int CISTER_FLOW_STATUS = 0;
-int CISTER_FLOW_ERROR = 0;
+int CISTER_FLOW_STATUS = ST_IDLE;
+int CISTER_FLOW_ERROR = NO_ERROR;
 
-int CONCES_FLOW_STATUS = 0;
-int CONCES_FLOW_ERROR = 0;
+int CONCES_FLOW_STATUS = ST_IDLE;
+int CONCES_FLOW_ERROR = NO_ERROR;
 
 bool FLOW_ENABLED = false;
 
@@ -148,7 +161,7 @@ unsigned int CONCES_COUNTER = 0;
 unsigned int CISTER_COUNTER = 0;
 
 bool REFRESH_STATUS_SCREEN = false;
-int LCD_BL_STATE = 1; // 1 = Ligado, 0 = Desligado
+int LCD_BL_STATE = ST_ON; // 1 = Ligado, 0 = Desligado
 int LCD_BL_TIMEOUT = 3; // Tempo LCD Ligado
 unsigned long LAST_ITERATION_TIME = 0;
 
@@ -172,7 +185,6 @@ int MENU_SIZE = 9;
 int SUBMENU_SIZE = 2;
 
 bool DO_MENU_DRAW = false;
-
 
 int ENCODER_POS = 0;
 unsigned long LAST_ENCODER_SW_TIME;
@@ -216,17 +228,17 @@ void setup() {
   }
 
   if (CISTER_TIME_VALUE > 40) {
-    CISTER_TIME_VALUE = 40;
+    CISTER_TIME_VALUE = 14; // 7 Minutes
     EEPROM.update(CISTER_TIME_ADDR, CISTER_TIME_VALUE);
   }
 
   if (CONCES_TIME_VALUE > 40) {
-    CONCES_TIME_VALUE = 40;
+    CONCES_TIME_VALUE = 14; // 7 Minutes
     EEPROM.update(CONCES_TIME_ADDR, CONCES_TIME_VALUE);
   }
 
   if (LCD_BL_TIMEOUT > 5) {
-    LCD_BL_TIMEOUT = 5;
+    LCD_BL_TIMEOUT = 5; // Max 5 Minutes
     EEPROM.update(BL_TIMEOUT_ADDR, LCD_BL_TIMEOUT);
   }
 
@@ -330,23 +342,25 @@ void controleDeFluxo(){
     if (CISTER_STARTUP_DONE && RESERV_STARTUP_DONE) {
       if (RESERV_EMPTY_STATE) { /* CASO O RESERVATORIO NECESSITE ENCHER */
         if (!CISTER_EMPTY_STATE) { /* SE HOUVER AGUA NA CISTERNA ACIONA O MOTOR DA CISTERNA */
-          if (CISTER_FLOW_STATUS == 0 && CISTER_FLOW_ERROR == 0) {
+          if (CISTER_FLOW_STATUS == ST_IDLE && CISTER_FLOW_ERROR == NO_ERROR) {
             /* INICIAR AQUI CONTEGEM DE TEMPO DE SERGURANCA... */
             TIME_CISTER_FLOW = LOOP_TIME;
             TOTAL_TIME_CISTER_FLOW = 0;
-            solenoidOff();
-            motorOn();
+            // Increment and Write to EEPROM just before manage actuators 
             CISTER_COUNTER++;
             EEPROM.put(CISTER_COUNT_ADDR, CISTER_COUNTER);
+            solenoidOff();
+            motorOn();
           }
         } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
-          if (CONCES_FLOW_STATUS == 0 && CONCES_FLOW_ERROR == 0) {
+          if (CONCES_FLOW_STATUS == ST_IDLE && CONCES_FLOW_ERROR == NO_ERROR) {
             TIME_CONCES_FLOW = LOOP_TIME;
             TOTAL_TIME_CONCES_FLOW = 0;
-            motorOff();
-            solenoidOn();
+            // Increment and Write to EEPROM just before manage actuators 
             CONCES_COUNTER++;
             EEPROM.put(CONCES_COUNT_ADDR, CONCES_COUNTER);
+            motorOff();
+            solenoidOn();
           }
         }
       } else {
@@ -513,7 +527,7 @@ void processEncoderButtonPress() {
         case 1:
           switch (SUBMENU_ATUAL) {
             case 0:
-              if (CISTER_FLOW_STATUS == 0) {
+              if (CISTER_FLOW_STATUS == ST_IDLE) {
                 TIME_CISTER_FLOW = LOOP_TIME;
                 TOTAL_TIME_CISTER_FLOW = 0;
                 // Reseta o Empty State do reservatório, caso contrario o motor
@@ -526,7 +540,7 @@ void processEncoderButtonPress() {
               DO_MENU_DRAW = true;
               break;
             case 1:
-              if (CISTER_FLOW_STATUS == 1) {
+              if (CISTER_FLOW_STATUS == ST_RUNNING) {
                 motorOff();
                 RESERV_EMPTY_STATE = false;
               }
@@ -543,7 +557,7 @@ void processEncoderButtonPress() {
         case 2:
           switch (SUBMENU_ATUAL) {
             case 0:
-              if (CONCES_FLOW_STATUS == 0) {
+              if (CONCES_FLOW_STATUS == ST_IDLE) {
                 TIME_CONCES_FLOW = LOOP_TIME;
                 TOTAL_TIME_CONCES_FLOW = 0;
                 solenoidOn();
@@ -551,7 +565,7 @@ void processEncoderButtonPress() {
               DO_MENU_DRAW = true;
               break;
             case 1:
-              if (CONCES_FLOW_STATUS == 1) solenoidOff();
+              if (CONCES_FLOW_STATUS == ST_RUNNING) solenoidOff();
               DO_MENU_DRAW = true;
               break;
             // Voltar
@@ -575,8 +589,8 @@ void processEncoderButtonPress() {
               // Retira o Estado de erro
               EEPROM.update(CONCES_ERROR_ADDR, 0);
               EEPROM.update(CISTER_ERROR_ADDR, 0);
-              CONCES_FLOW_ERROR = 0;
-              CISTER_FLOW_ERROR = 0;
+              CONCES_FLOW_ERROR = NO_ERROR;
+              CISTER_FLOW_ERROR = NO_ERROR;
               IN_SUBMENU = false;
               break;
             case 1:
@@ -588,13 +602,13 @@ void processEncoderButtonPress() {
         case 5:
           switch (SUBMENU_ATUAL) {
             case 0:
-              START_LEVEL = 0;
+              START_LEVEL = LEVEL_EMPTY;
               break;
             case 1:
-              START_LEVEL = 1;
+              START_LEVEL = LEVEL_LOW;
               break;
             case 2:
-              START_LEVEL = 2;
+              START_LEVEL = LEVEL_MID;
               break;
             case 3:
               EEPROM.update(START_LEVEL_ADDR, START_LEVEL);
@@ -694,28 +708,28 @@ void lcdBackLightOn() {
 }
 
 void motorOn() {
-  if (CISTER_FLOW_STATUS == 0) {
+  if (CISTER_FLOW_STATUS == ST_IDLE) {
     LAST_FLOW_MODE = FLOW_CISTER;
     EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CISTER);
-    CISTER_FLOW_STATUS = 1;
+    CISTER_FLOW_STATUS = ST_RUNNING;
     REFRESH_STATUS_SCREEN = true;
     digitalWrite(CISTER_FLOW_OUT, LOW);
   }
 }
 
 void solenoidOn() {
-  if (CONCES_FLOW_STATUS == 0) {
+  if (CONCES_FLOW_STATUS == ST_IDLE) {
     LAST_FLOW_MODE = FLOW_CONCES;
     EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CONCES);
-    CONCES_FLOW_STATUS = 1;
+    CONCES_FLOW_STATUS = ST_RUNNING;
     REFRESH_STATUS_SCREEN = true;
     digitalWrite(CONCES_FLOW_OUT, LOW);
   }
 }
 
 void solenoidOff() {
-  if (CONCES_FLOW_STATUS == 1) {
-    CONCES_FLOW_STATUS = 0;
+  if (CONCES_FLOW_STATUS == ST_RUNNING) {
+    CONCES_FLOW_STATUS = ST_IDLE;
     REFRESH_STATUS_SCREEN = true;
     EEPROM.put(CONCES_LAST_TIME_ADDR, TOTAL_TIME_CONCES_FLOW);
     digitalWrite(CONCES_FLOW_OUT, HIGH);
@@ -723,8 +737,8 @@ void solenoidOff() {
 }
 
 void motorOff() {
-  if (CISTER_FLOW_STATUS == 1) {
-    CISTER_FLOW_STATUS = 0;
+  if (CISTER_FLOW_STATUS == ST_RUNNING) {
+    CISTER_FLOW_STATUS = ST_IDLE;
     REFRESH_STATUS_SCREEN = true;
     EEPROM.put(CISTER_LAST_TIME_ADDR, TOTAL_TIME_CISTER_FLOW);
     digitalWrite(CISTER_FLOW_OUT, HIGH);
@@ -733,23 +747,23 @@ void motorOff() {
 
 void doSecurityCheck() {
 
-  if (CISTER_FLOW_STATUS == 1) {
+  if (CISTER_FLOW_STATUS == ST_RUNNING) {
     TOTAL_TIME_CISTER_FLOW = LOOP_TIME - TIME_CISTER_FLOW;
     if (TOTAL_TIME_CISTER_FLOW > MAX_TIME_CISTER_FLOW) {
+      CISTER_FLOW_ERROR = WITH_ERROR;
+      EEPROM.update(CISTER_ERROR_ADDR, CISTER_FLOW_ERROR);
       motorOff();
       solenoidOff();
-      CISTER_FLOW_ERROR = 1;
-      EEPROM.update(CISTER_ERROR_ADDR, 1);
     }
   }
 
-  if (CONCES_FLOW_STATUS == 1) {
+  if (CONCES_FLOW_STATUS == ST_RUNNING) {
     TOTAL_TIME_CONCES_FLOW = LOOP_TIME - TIME_CONCES_FLOW;
     if (TOTAL_TIME_CONCES_FLOW > MAX_TIME_CONCES_FLOW) {
+      CONCES_FLOW_ERROR = WITH_ERROR;
+      EEPROM.update(CONCES_ERROR_ADDR, CONCES_FLOW_ERROR);
       motorOff();
       solenoidOff();
-      CONCES_FLOW_ERROR = 1;
-      EEPROM.update(CONCES_ERROR_ADDR, 1);
     }
   }
 }
@@ -766,9 +780,9 @@ void printStatusSkel() {
   lcd.setCursor(0, 1);
   //         XXXXXXXXXXXXXXXX
   lcd.print("Off        --:--");
-  if (CONCES_FLOW_ERROR == 1 | CISTER_FLOW_ERROR == 1) {
+  if (CONCES_FLOW_ERROR == WITH_ERROR | CISTER_FLOW_ERROR == WITH_ERROR) {
     lcd.setCursor(0, 1);
-    if (CONCES_FLOW_ERROR == 1) {
+    if (CONCES_FLOW_ERROR == WITH_ERROR) {
       lcd.print("ERRO-SL");
     } else {
       lcd.print("ERRO-MT");
@@ -916,21 +930,21 @@ void printMenu5(){
     lcd.print("  ");
     lcd.write(byte(VOLTAR));
 
-    if (START_LEVEL == 0) {
+    if (START_LEVEL == LEVEL_EMPTY) {
       lcd.setCursor(1,1);
       lcd.print("*");
       lcd.setCursor(6,1);
       lcd.print(" ");
       lcd.setCursor(11,1);
       lcd.print(" ");
-    } else if (START_LEVEL == 1){
+    } else if (START_LEVEL == LEVEL_LOW){
       lcd.setCursor(1,1);
       lcd.print(" ");
       lcd.setCursor(6,1);
       lcd.print("*");
       lcd.setCursor(11,1);
       lcd.print(" ");
-    } else if (START_LEVEL == 2){
+    } else if (START_LEVEL == LEVEL_MID){
       lcd.setCursor(1,1);
       lcd.print(" ");
       lcd.setCursor(6,1);
@@ -1027,16 +1041,16 @@ void printMenu4(){
     }
   } else {
     lcd.setCursor(0,1);
-    if (CISTER_FLOW_ERROR == 0 && CONCES_FLOW_ERROR == 0) {
+    if (CISTER_FLOW_ERROR == NO_ERROR && CONCES_FLOW_ERROR == NO_ERROR) {
       lcd.print("    SEM ERRO    ");
     }
 
-    if (CISTER_FLOW_ERROR == 1) {
+    if (CISTER_FLOW_ERROR == WITH_ERROR) {
       lcd.print("SIM: Tempo Motor");
-    } else if (CONCES_FLOW_ERROR == 1) {
+    } else if (CONCES_FLOW_ERROR == WITH_ERROR) {
       lcd.print("SIM: Tempo Solen");
     }
-    if (CISTER_FLOW_ERROR == 1 && CONCES_FLOW_ERROR == 1) {
+    if (CISTER_FLOW_ERROR == WITH_ERROR && CONCES_FLOW_ERROR == WITH_ERROR) {
       lcd.print("SIM: Motor&Solen");
     }
   }
@@ -1087,7 +1101,7 @@ void printMenu2(){
     lcd.setCursor(0,1);
     lcd.print("  ON     OFF   ");
     lcd.write(byte(VOLTAR));
-    if (CONCES_FLOW_STATUS == 1) {
+    if (CONCES_FLOW_STATUS == ST_RUNNING) {
       lcd.setCursor(1,1);
       lcd.print("*");
       lcd.setCursor(8,1);
@@ -1128,7 +1142,7 @@ void printMenu2(){
   } else {
     lcd.setCursor(0,1);
                                  //         1234567890123456
-    if (CONCES_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    if (CONCES_FLOW_STATUS == ST_RUNNING) lcd.print("     Ligado     ");
     //         1234567890123456
     lcd.print("    Desligado   ");
   }
@@ -1145,7 +1159,7 @@ void printMenu1() {
     //         1234567890123456
     lcd.print("  ON     OFF   ");
     lcd.write(byte(VOLTAR));
-    if (CISTER_FLOW_STATUS == 1) {
+    if (CISTER_FLOW_STATUS == ST_RUNNING) {
       lcd.setCursor(1,1);
       lcd.print("*");
       lcd.setCursor(8,1);
@@ -1186,7 +1200,7 @@ void printMenu1() {
   } else {
     lcd.setCursor(0,1);
                                  //         1234567890123456
-    if (CISTER_FLOW_STATUS == 1) lcd.print("     Ligado     ");
+    if (CISTER_FLOW_STATUS == ST_RUNNING) lcd.print("     Ligado     ");
     //         1234567890123456
     lcd.print("    Desligado   ");
   }
@@ -1344,27 +1358,27 @@ void statusScreen() {
   // Atualiza Nivel Caixa
   lcd.setCursor(3, 0);
   switch (RESERV_LEVEL_READ) {
-    case 0:
+    case LEVEL_EMPTY:
       lcd.write(byte(LEVEL_EMPTY));
       break;
-    case 1:
+    case LEVEL_LOW:
       lcd.write(byte(LEVEL_LOW));
       break;
-    case 2:
+    case LEVEL_MID:
       lcd.write(byte(LEVEL_MID));
       break;
-    case 3:
+    case LEVEL_FULL:
       lcd.write(byte(LEVEL_FULL));
       break;
   }
 
-  if (CONCES_FLOW_STATUS == 1) {
+  if (CONCES_FLOW_STATUS == ST_RUNNING) {
     lcd.setCursor(0, 1);
               
     lcd.print("Solen. On  ");
     printTime(TOTAL_TIME_CONCES_FLOW);
   }
-  if (CISTER_FLOW_STATUS == 1) {
+  if (CISTER_FLOW_STATUS == ST_RUNNING) {
     lcd.setCursor(0, 1);
     lcd.print("Motor On   ");
     printTime(TOTAL_TIME_CISTER_FLOW);
@@ -1373,19 +1387,19 @@ void statusScreen() {
 
 void readCisternStatus() {
   int SENSOR_VALUE = analogRead(CISTER_SENS);
-  int LEVEL_READ = 0;
+  int LEVEL_READ = LEVEL_EMPTY;
   // CHEIA ~1023
   if (SENSOR_VALUE > 800) {
-    LEVEL_READ = 3;
+    LEVEL_READ = LEVEL_FULL;
   } else if (SENSOR_VALUE < 700 && SENSOR_VALUE > 450) {
     // MEIA ~508
-    LEVEL_READ = 2;
+    LEVEL_READ = LEVEL_MID;
   } else if (SENSOR_VALUE < 450 && SENSOR_VALUE > 250) {
     // BAIXA ~337
-    LEVEL_READ = 1;
+    LEVEL_READ = LEVEL_LOW;
   } else {
     // VAZIA ~0;
-    LEVEL_READ = 0;
+    LEVEL_READ = LEVEL_EMPTY;
   }
   // RESERV_LEVEL = RESERV_LEVEL_READ;
   if (LEVEL_READ != CISTER_LEVEL_READ) {
@@ -1405,7 +1419,7 @@ void readCisternStatus() {
   } else {
     // Prevenir alternancia, entre motor e solenoide caso a cisterna começe a encher
     // e alcançe o primeiro nivel do sensor durante o enchimento
-    if (CONCES_FLOW_STATUS == 0) {
+    if (CONCES_FLOW_STATUS == ST_IDLE) {
       CISTER_EMPTY_STATE = false;
     }
   }
@@ -1413,19 +1427,19 @@ void readCisternStatus() {
 
 void readReservatoryStatus() {
   int SENSOR_VALUE = analogRead(RESERV_SENS);
-  int LEVEL_READ = 0;
+  int LEVEL_READ = LEVEL_EMPTY;
   // CHEIA ~1023
   if (SENSOR_VALUE > 800) {
-    LEVEL_READ = 3;
+    LEVEL_READ = LEVEL_FULL;
   } else if (SENSOR_VALUE < 800 && SENSOR_VALUE > 565) {
     // MEIA ~613
-    LEVEL_READ = 2;
+    LEVEL_READ = LEVEL_MID;
   } else if (SENSOR_VALUE < 565 && SENSOR_VALUE > 400) {
     // BAIXA ~517
-    LEVEL_READ = 1;
+    LEVEL_READ = LEVEL_LOW;
   } else {
     // VAZIA ~0;
-    LEVEL_READ = 0;
+    LEVEL_READ = LEVEL_EMPTY;
   }
   // RESERV_LEVEL = RESERV_LEVEL_READ;
   if (LEVEL_READ != RESERV_LEVEL_READ) {
@@ -1442,7 +1456,7 @@ void readReservatoryStatus() {
 
   if (RESERV_LEVEL <= START_LEVEL) {
     RESERV_EMPTY_STATE = true;
-  } else if (RESERV_LEVEL == 3 ) {
+  } else if (RESERV_LEVEL == LEVEL_FULL ) {
     RESERV_EMPTY_STATE = false;
   }
 }
