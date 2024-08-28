@@ -369,6 +369,14 @@ void controleDeFluxo(){
   }
 }
 
+bool validLevels() {
+  if ((CISTER_LEVEL != LEVEL_INVALID) && (RESERV_LEVEL != LEVEL_INVALID)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void readMenuSwitch(){
   int newPos = encoder.getPosition();
   int direction = 0;
@@ -707,7 +715,7 @@ void lcdBackLightOn() {
 }
 
 void motorOn() {
-  if (CISTER_FLOW_STATUS == ST_IDLE) {
+  if ((CISTER_FLOW_STATUS == ST_IDLE) && validLevels()) {
     LAST_FLOW_MODE = FLOW_CISTER;
     EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CISTER);
     CISTER_FLOW_STATUS = ST_RUNNING;
@@ -717,7 +725,7 @@ void motorOn() {
 }
 
 void solenoidOn() {
-  if (CONCES_FLOW_STATUS == ST_IDLE) {
+  if ((CONCES_FLOW_STATUS == ST_IDLE) && validLevels()) {
     LAST_FLOW_MODE = FLOW_CONCES;
     EEPROM.update(LAST_FLOW_MODE_ADDR, FLOW_CONCES);
     CONCES_FLOW_STATUS = ST_RUNNING;
