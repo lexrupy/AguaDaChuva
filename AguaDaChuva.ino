@@ -99,13 +99,13 @@
 // 0 -> iniciar quando vazio
 // 1 -> iniciar quando nivel baixo
 // 2 -> iniciar quando nivel medio
-
-#define LEVEL_EMPTY 0
-#define LEVEL_LOW   1
-#define LEVEL_MID   2
-#define LEVEL_FULL  3
-#define HEART       4
-#define VOLTAR      5
+#define LEVEL_INVALID -1
+#define LEVEL_EMPTY    0
+#define LEVEL_LOW      1
+#define LEVEL_MID      2
+#define LEVEL_FULL     3
+#define HEART          4
+#define VOLTAR         5
 
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_DT4, LCD_DT5, LCD_DT6, LCD_DT7);
 RotaryEncoder encoder(ROTARY_ENCODER_DT, ROTARY_ENCODER_CLK, RotaryEncoder::LatchMode::TWO03);
@@ -124,9 +124,8 @@ unsigned long HEART_BEAT_LAST = 0;
 unsigned long MAX_TIME_CISTER_FLOW = 7 * MINUTE; // DEFAULT 7 MINUTOS
 unsigned long MAX_TIME_CONCES_FLOW = 7 * MINUTE; // DEFAULT 7 MINUTOS
 
-int CISTER_LEVEL = LEVEL_EMPTY;
-// Iniciar Nivel do Reservatorio como 3 (Cheio), prevenindo ligar solenoide antes de terminar a leitura inicial
-int RESERV_LEVEL = LEVEL_FULL;
+int CISTER_LEVEL = LEVEL_INVALID;
+int RESERV_LEVEL = LEVEL_INVALID;
 
 int RESERV_LEVEL_READ = LEVEL_EMPTY;
 int CISTER_LEVEL_READ = LEVEL_EMPTY;
@@ -352,7 +351,7 @@ void controleDeFluxo(){
             solenoidOff();
             motorOn();
           }
-        } else { /* SE NAO HOUVER AGUA NA SISTERNA ACIONA O MOTOR DA SISTERNA */
+        } else { /* SE NAO HOUVER AGUA NA CISTERNA ACIONA A VALVULA ELETRICA */
           if (CONCES_FLOW_STATUS == ST_IDLE && CONCES_FLOW_ERROR == NO_ERROR) {
             TIME_CONCES_FLOW = LOOP_TIME;
             TOTAL_TIME_CONCES_FLOW = 0;
